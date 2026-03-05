@@ -38,10 +38,10 @@ app.use(express.json());
 app.post("/api/auth/register", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { username, password, fullName, className, studentNumber } = req.body;
+    const { username, password, fullName, className, studentNumber, schoolName, profilePictureUrl } = req.body;
     
-    if (!username || !password || !fullName || !className || !studentNumber) {
-      return res.status(400).json({ error: "Semua field harus diisi" });
+    if (!username || !password || !fullName || !className || !studentNumber || !schoolName) {
+      return res.status(400).json({ error: "Semua field wajib harus diisi" });
     }
 
     const id = `${className.toUpperCase()}-${studentNumber}-${Date.now()}`;
@@ -56,6 +56,8 @@ app.post("/api/auth/register", async (req, res) => {
           full_name: fullName, 
           class_name: className.toUpperCase(), 
           student_number: parseInt(studentNumber),
+          school_name: schoolName,
+          profile_picture_url: profilePictureUrl || "",
           xp: 0,
           created_at: Date.now()
         }
@@ -70,7 +72,7 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(500).json({ error: "Gagal mendaftar: " + error.message });
     }
 
-    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, xp: 0 } });
+    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, schoolName, profilePictureUrl, xp: 0 } });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
@@ -131,7 +133,7 @@ app.get("/api/users/:id", async (req, res) => {
     const supabase = getSupabase();
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, full_name, class_name, student_number, xp')
+      .select('id, username, full_name, class_name, student_number, xp, school_name, profile_picture_url')
       .eq('id', req.params.id)
       .single();
 
@@ -154,6 +156,8 @@ app.get("/api/users/:id", async (req, res) => {
       fullName: user.full_name,
       className: user.class_name,
       studentNumber: user.student_number,
+      schoolName: user.school_name,
+      profilePictureUrl: user.profile_picture_url,
       interactions: totalInteractions 
     });
   } catch (error: any) {

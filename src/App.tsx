@@ -15,6 +15,8 @@ interface UserProfile {
   fullName: string;
   className: string;
   studentNumber: string;
+  schoolName: string;
+  profilePictureUrl: string;
   xp: number;
   interactions: number;
 }
@@ -62,6 +64,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
   const [fullName, setFullName] = useState('');
   const [className, setClassName] = useState('');
   const [studentNumber, setStudentNumber] = useState('');
+  const [schoolName, setSchoolName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -91,8 +94,8 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
           setError(data.error || 'Gagal login');
         }
       } else {
-        if (!username || !password || !fullName || !className || !studentNumber) {
-          setError('Semua field harus diisi');
+        if (!username || !password || !fullName || !className || !studentNumber || !schoolName) {
+          setError('Semua field wajib diisi');
           setLoading(false);
           return;
         }
@@ -100,7 +103,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, fullName, className, studentNumber })
+          body: JSON.stringify({ username, password, fullName, className, studentNumber, schoolName })
         });
         
         const data = await res.json();
@@ -212,6 +215,17 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
                     />
                   </div>
                 </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Asal Sekolah</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: SMP Negeri 1 Jakarta"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
+                    required
+                  />
+                </div>
               </>
             )}
 
@@ -278,16 +292,21 @@ const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }
           <div className="h-32 bg-gradient-to-r from-[#8A9A5B] to-[#D2B48C] relative">
             <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2">
               <div className="w-24 h-24 rounded-full bg-white p-1 shadow-md">
-                <div className="w-full h-full rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-3xl font-bold">
-                  {profileData?.fullName?.charAt(0).toUpperCase() || '?'}
-                </div>
+                {profileData?.profilePictureUrl ? (
+                  <img src={profileData.profilePictureUrl} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                ) : (
+                  <div className="w-full h-full rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-3xl font-bold">
+                    {profileData?.fullName?.charAt(0).toUpperCase() || '?'}
+                  </div>
+                )}
               </div>
             </div>
           </div>
           
           <div className="pt-16 pb-8 px-6 text-center">
             <h2 className="text-2xl font-bold mb-1">{profileData?.fullName}</h2>
-            <p className="text-[#A8A096] font-medium mb-6">@{profileData?.username}</p>
+            <p className="text-[#A8A096] font-medium mb-1">@{profileData?.username}</p>
+            <p className="text-sm text-[#8A9A5B] font-bold mb-6">{profileData?.schoolName}</p>
             
             <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="bg-[#F4F1EA] p-4 rounded-2xl border border-[#E5E0D8]">
