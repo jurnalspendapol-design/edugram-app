@@ -61,6 +61,8 @@ app.post("/api/auth/register", async (req, res) => {
           profile_picture_url: profilePictureUrl || "",
           role,
           xp: 0,
+          streak: 0,
+          last_post_date: null,
           created_at: Date.now()
         }
       ])
@@ -122,7 +124,9 @@ app.post("/api/auth/login", async (req, res) => {
         studentNumber: user.student_number, 
         role: user.role,
         xp: user.xp,
-        interactions: totalInteractions
+        interactions: totalInteractions,
+        streak: user.streak || 0,
+        lastPostDate: user.last_post_date
       } 
     });
   } catch (error: any) {
@@ -136,7 +140,7 @@ app.get("/api/users/:id", async (req, res) => {
     const supabase = getSupabase();
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, full_name, class_name, student_number, xp, school_name, profile_picture_url')
+      .select('id, username, full_name, class_name, student_number, xp, school_name, profile_picture_url, streak, last_post_date')
       .eq('id', req.params.id)
       .single();
 
@@ -161,7 +165,9 @@ app.get("/api/users/:id", async (req, res) => {
       studentNumber: user.student_number,
       schoolName: user.school_name,
       profilePictureUrl: user.profile_picture_url,
-      interactions: totalInteractions 
+      interactions: totalInteractions,
+      streak: user.streak || 0,
+      lastPostDate: user.last_post_date
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
@@ -244,16 +250,54 @@ app.post("/api/posts", async (req, res) => {
       return res.status(500).json({ error: "Gagal membuat postingan" });
     }
 
-    // Add XP to user
+    // Add XP to user and update streak
     let xpGained = 10;
     if (isScientific) xpGained += 5;
     
-    const { data: user } = await supabase.from('users').select('xp').eq('id', authorId).single();
+    const today = new Date().toISOString().split('T')[0];
+    const { data: user } = await supabase.from('users').select('xp, streak, last_post_date').eq('id', authorId).single();
+    
+    let updatedUser = null;
     if (user) {
-      await supabase.from('users').update({ xp: user.xp + xpGained }).eq('id', authorId);
+      let newStreak = user.streak || 0;
+      let lastDate = user.last_post_date;
+      
+      if (!lastDate) {
+        newStreak = 1;
+      } else {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = yesterday.toISOString().split('T')[0];
+        
+        if (lastDate === yesterdayStr) {
+          newStreak += 1;
+        } else if (lastDate !== today) {
+          newStreak = 1;
+        }
+      }
+      
+      const { data: userData } = await supabase.from('users').update({ 
+        xp: user.xp + xpGained,
+        streak: newStreak,
+        last_post_date: today
+      }).eq('id', authorId).select().single();
+      
+      if (userData) {
+        updatedUser = {
+          id: userData.id,
+          username: userData.username,
+          fullName: userData.full_name,
+          className: userData.class_name,
+          studentNumber: userData.student_number,
+          role: userData.role,
+          xp: userData.xp,
+          streak: userData.streak,
+          lastPostDate: userData.last_post_date
+        };
+      }
     }
 
-    res.json({ success: true, id });
+    res.json({ success: true, id, user: updatedUser });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }

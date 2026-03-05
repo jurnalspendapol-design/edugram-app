@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X } from 'lucide-react';
 
 type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
 
@@ -20,6 +20,8 @@ interface UserProfile {
   role: 'student' | 'teacher';
   xp: number;
   interactions: number;
+  streak: number;
+  lastPostDate?: string; // ISO string YYYY-MM-DD
 }
 
 interface Post {
@@ -43,11 +45,33 @@ interface UserStats {
   id: string;
   name: string;
   className: string;
+  schoolName: string;
   xp: number;
   interactions: number;
 }
 
 const SCIENTIFIC_KEYWORDS = ['emisi', 'gas rumah kaca', 'limbah', 'biogas'];
+
+const DAILY_QUESTS = [
+  "Tunjukkan caramu menghemat air hari ini! 💧", // Minggu
+  "Posting foto botol minum tumblr kamu! (#SayNoToPlastic) 🥤", // Senin
+  "Cari 1 alat elektronik yang masih dicolok padahal nggak dipakai! 🔌", // Selasa
+  "Gunakan transportasi umum atau jalan kaki hari ini! 🚶‍♂️", // Rabu
+  "Kurangi penggunaan tisu, gunakan sapu tangan! 🧣", // Kamis
+  "Matikan lampu saat tidak digunakan! 💡", // Jumat
+  "Pilah sampah organik dan anorganik di rumah! ♻️" // Sabtu
+];
+
+const ECO_FACTS = [
+  "Indonesia adalah penyumbang sampah plastik ke laut terbesar kedua di dunia. Ayo kurangi plastik! 🌊",
+  "Satu pohon dewasa dapat menyerap sekitar 22kg karbon dioksida per tahun. Tanam pohon yuk! 🌳",
+  "Pemanasan global dapat menyebabkan kenaikan permukaan air laut yang mengancam pulau-pulau kecil di Indonesia. 🏝️",
+  "Mematikan lampu selama satu jam dapat menghemat energi yang cukup untuk menyalakan TV selama 3 jam. 📺",
+  "Sampah makanan di Indonesia mencapai 23-48 juta ton per tahun, cukup untuk memberi makan 61-125 juta orang. 🍱",
+  "Penggunaan tumbler dapat mengurangi hingga 150 botol plastik per orang setiap tahunnya. 🥤",
+  "Suhu rata-rata bumi telah meningkat sekitar 1.1°C sejak akhir abad ke-19. Kita harus bertindak! 🌡️",
+  "Ketahanan pangan Indonesia terancam oleh perubahan iklim yang mengganggu pola tanam petani. 🌾"
+];
 
 const SUBBAB_COLORS: Record<Subbab, string> = {
   'Kesehatan Lingkungan': 'bg-teal-100 text-teal-800 border-teal-200',
@@ -56,7 +80,76 @@ const SUBBAB_COLORS: Record<Subbab, string> = {
   'Ketahanan Pangan': 'bg-green-100 text-green-800 border-green-200',
 };
 
-// --- Auth Screen Component ---
+// --- Daily Quest Banner Component ---
+const DailyQuestBanner = () => {
+  const today = new Date().getDay();
+  const quest = DAILY_QUESTS[today];
+
+  return (
+    <div className="bg-gradient-to-r from-[#8A9A5B] to-[#7A8A4B] rounded-2xl p-4 mb-6 shadow-md border border-[#8A9A5B]/20 relative overflow-hidden group">
+      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform"></div>
+      <div className="relative z-10 flex items-center gap-4">
+        <div className="w-12 h-12 bg-white/20 rounded-xl backdrop-blur-sm flex items-center justify-center shadow-inner shrink-0">
+          <Trophy className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h3 className="text-white/80 text-xs font-bold uppercase tracking-wider mb-0.5">Misi Hari Ini</h3>
+          <p className="text-white font-bold text-sm sm:text-base leading-tight">{quest}</p>
+        </div>
+        <div className="ml-auto hidden sm:block">
+          <div className="bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest border border-white/30">
+            +15 XP
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Bang Eko Component ---
+const BangEko = () => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [currentFact, setCurrentFact] = useState('');
+
+  const showFact = () => {
+    const randomFact = ECO_FACTS[Math.floor(Math.random() * ECO_FACTS.length)];
+    setCurrentFact(randomFact);
+    setIsOpen(true);
+  };
+
+  return (
+    <div className="fixed bottom-6 right-6 z-[100]">
+      {isOpen && (
+        <div className="absolute bottom-16 right-0 w-72 bg-white rounded-2xl shadow-2xl border border-[#E5E0D8] p-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-[#8A9A5B] rounded-lg flex items-center justify-center">
+                <Leaf className="w-5 h-5 text-white" />
+              </div>
+              <span className="font-bold text-sm">Bang Eko</span>
+            </div>
+            <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-[#F4F1EA] rounded-full transition-colors">
+              <X className="w-4 h-4 text-[#A8A096]" />
+            </button>
+          </div>
+          <div className="bg-[#F4F1EA] p-3 rounded-xl text-sm leading-relaxed text-[#4A4036] border border-[#E5E0D8]">
+            {currentFact}
+          </div>
+          <div className="mt-3 text-[10px] text-[#A8A096] font-medium text-center italic">
+            "Semangat terus ya, Eco-Influencer! 🌱"
+          </div>
+        </div>
+      )}
+      <button
+        onClick={showFact}
+        className="w-14 h-14 bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center group relative"
+      >
+        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>
+        <MessageSquare className="w-7 h-7 group-hover:scale-110 transition-transform" />
+      </button>
+    </div>
+  );
+};
 const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
   
@@ -342,18 +435,35 @@ const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }
               </div>
               
               <div className="w-px h-12 bg-[#E5E0D8]"></div>
+
+              <div className="text-center">
+                <div className="flex items-center justify-center gap-2 mb-1">
+                  <Flame className={`w-5 h-5 ${profileData?.streak && profileData.streak >= 3 ? 'text-orange-500 fill-orange-500 animate-pulse' : 'text-[#A8A096]'}`} />
+                  <span className="text-2xl font-bold text-[#4A4036]">{profileData?.streak || 0}</span>
+                </div>
+                <div className="text-xs font-bold text-[#A8A096] uppercase tracking-wider">Streak Hari</div>
+              </div>
+              
+              <div className="w-px h-12 bg-[#E5E0D8]"></div>
               
               <div className="text-center">
                 <div className="flex items-center justify-center gap-2 mb-1">
                   <Heart className="w-5 h-5 text-red-400" />
                   <span className="text-2xl font-bold text-[#4A4036]">{profileData?.interactions || 0}</span>
                 </div>
-                <div className="text-xs font-bold text-[#A8A096] uppercase tracking-wider">Interaksi Diterima</div>
+                <div className="text-xs font-bold text-[#A8A096] uppercase tracking-wider">Interaksi</div>
               </div>
             </div>
             
+            {profileData?.streak && profileData.streak >= 3 && (
+              <div className="mt-6 inline-flex items-center gap-2 bg-orange-50 text-orange-600 px-4 py-2 rounded-full border border-orange-100 font-bold text-sm shadow-sm">
+                <Flame className="w-5 h-5 fill-orange-500" />
+                ON FIRE! 🔥
+              </div>
+            )}
+            
             {(profileData?.interactions || 0) > 10 && (
-              <div className="mt-6 inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-full border border-blue-100 font-medium text-sm">
+              <div className="mt-4 inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-full border border-blue-100 font-medium text-sm">
                 <CheckCircle2 className="w-5 h-5" />
                 Verified Eco-Influencer
               </div>
@@ -546,6 +656,11 @@ export default function App() {
       });
 
       if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          setCurrentUser(data.user);
+          localStorage.setItem('edugram_user_profile', JSON.stringify(data.user));
+        }
         setCaption('');
         setImageUrl('');
         fetchData(); // Refresh feed
@@ -607,10 +722,10 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-3">
-            <button onClick={() => setView('feed')} className={`text-sm font-bold ${view === 'feed' ? 'text-white' : 'text-white/70'}`}>Feed</button>
-            <button onClick={() => setView('profile')} className={`text-sm font-bold ${view === 'profile' ? 'text-white' : 'text-white/70'}`}>Profil</button>
+            <button onClick={() => setView('feed')} className="text-sm font-bold text-white">Feed</button>
+            <button onClick={() => setView('profile')} className="text-sm font-bold text-white/70">Profil</button>
             {currentUser.role === 'teacher' && (
-              <button onClick={() => setView('students')} className={`text-sm font-bold ${view === 'students' ? 'text-white' : 'text-white/70'}`}>Siswa</button>
+              <button onClick={() => setView('students')} className="text-sm font-bold text-white/70">Siswa</button>
             )}
             <div className="w-px h-6 bg-[#8A9A5B] mx-2"></div>
             <button 
@@ -637,9 +752,8 @@ export default function App() {
         
         {/* Left Column: Feed & Input */}
         <div className="lg:col-span-2 space-y-6">
-          {view === 'feed' ? (
-            <>
-              {/* Create Post Form */}
+          <DailyQuestBanner />
+          {/* Create Post Form */}
               <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">
                 <form onSubmit={handlePost} className="space-y-4">
                   <div className="flex gap-4">
@@ -905,6 +1019,8 @@ export default function App() {
           100% { transform: translateY(-20px) scale(0); opacity: 0; }
         }
       `}} />
+      
+      <BangEko />
     </div>
   );
 }
