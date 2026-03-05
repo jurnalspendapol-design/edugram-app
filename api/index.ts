@@ -38,12 +38,13 @@ app.use(express.json());
 app.post("/api/auth/register", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { username, password, fullName, className, studentNumber, schoolName, profilePictureUrl } = req.body;
+    const { username, password, fullName, className, studentNumber, schoolName, profilePictureUrl, registrationCode } = req.body;
     
     if (!username || !password || !fullName || !className || !studentNumber || !schoolName) {
       return res.status(400).json({ error: "Semua field wajib harus diisi" });
     }
 
+    const role = registrationCode === 'whyedugram' ? 'teacher' : 'student';
     const id = `${className.toUpperCase()}-${studentNumber}-${Date.now()}`;
 
     const { data, error } = await supabase
@@ -58,6 +59,7 @@ app.post("/api/auth/register", async (req, res) => {
           student_number: parseInt(studentNumber),
           school_name: schoolName,
           profile_picture_url: profilePictureUrl || "",
+          role,
           xp: 0,
           created_at: Date.now()
         }
@@ -72,7 +74,7 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(500).json({ error: "Gagal mendaftar: " + error.message });
     }
 
-    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, schoolName, profilePictureUrl, xp: 0 } });
+    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, schoolName, profilePictureUrl, role, xp: 0 } });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
@@ -118,6 +120,7 @@ app.post("/api/auth/login", async (req, res) => {
         fullName: user.full_name, 
         className: user.class_name, 
         studentNumber: user.student_number, 
+        role: user.role,
         xp: user.xp,
         interactions: totalInteractions
       } 
@@ -304,7 +307,7 @@ app.post("/api/posts/:id/interact", async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name, xp') as { data: any[], error: any };
+    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name, xp, school_name') as { data: any[], error: any };
     const { data: posts, error: postsError } = await supabase.from('posts').select('author_id, insightful, ask, support') as { data: any[], error: any };
 
     if (usersError || postsError) {
@@ -319,6 +322,7 @@ app.get("/api/leaderboard", async (req, res) => {
         username: u.username,
         name: u.full_name,
         className: u.class_name,
+        schoolName: u.school_name,
         xp: u.xp,
         interactions
       };
@@ -331,6 +335,50 @@ app.get("/api/leaderboard", async (req, res) => {
     res.json(leaderboard);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+  }
+});
+
+// Create Assignment
+app.post("/api/assignments", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { postId, teacherId, type, question, options } = req.body;
+    
+    if (!postId || !teacherId || !question) {
+      return res.status(400).json({ error: "Data tugas tidak lengkap" });
+    }
+
+    const id = Date.now().toString();
+    const { error } = await supabase
+      .from('assignments')
+      .insert([{ id, post_id: postId, teacher_id: teacherId, type, question, options, created_at: Date.now() }]);
+
+    if (error) return res.status(500).json({ error: "Gagal membuat tugas" });
+    res.json({ success: true, id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete Student
+app.delete("/api/users/:id", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { teacherId } = req.body;
+    
+    // Verify teacher and school
+    const { data: teacher } = await supabase.from('users').select('role, school_name').eq('id', teacherId).single();
+    const { data: student } = await supabase.from('users').select('school_name').eq('id', req.params.id).single();
+
+    if (teacher?.role !== 'teacher' || teacher.school_name !== student?.school_name) {
+      return res.status(403).json({ error: "Tidak diizinkan" });
+    }
+
+    const { error } = await supabase.from('users').delete().eq('id', req.params.id);
+    if (error) return res.status(500).json({ error: "Gagal menghapus siswa" });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

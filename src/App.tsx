@@ -17,6 +17,7 @@ interface UserProfile {
   studentNumber: string;
   schoolName: string;
   profilePictureUrl: string;
+  role: 'student' | 'teacher';
   xp: number;
   interactions: number;
 }
@@ -35,6 +36,7 @@ interface Post {
   support: number;
   timestamp: number;
   isScientific: boolean;
+  assignments?: any[];
 }
 
 interface UserStats {
@@ -65,6 +67,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
   const [className, setClassName] = useState('');
   const [studentNumber, setStudentNumber] = useState('');
   const [schoolName, setSchoolName] = useState('');
+  const [registrationCode, setRegistrationCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -103,7 +106,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, fullName, className, studentNumber, schoolName })
+          body: JSON.stringify({ username, password, fullName, className, studentNumber, schoolName, registrationCode })
         });
         
         const data = await res.json();
@@ -224,6 +227,16 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
                     onChange={(e) => setSchoolName(e.target.value)}
                     className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
                     required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Kode Registrasi (Opsional untuk Guru)</label>
+                  <input
+                    type="text"
+                    placeholder="Masukkan kode jika guru"
+                    value={registrationCode}
+                    onChange={(e) => setRegistrationCode(e.target.value)}
+                    className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
                   />
                 </div>
               </>
@@ -687,6 +700,15 @@ export default function App() {
                           </div>
                           <span className={`text-sm font-medium ${post.support > 0 ? 'text-red-600' : ''}`}>{post.support}</span>
                         </button>
+
+                        {currentUser.role === 'teacher' && (
+                          <button 
+                            onClick={() => {/* TODO: Implement assignment creation modal */}}
+                            className="ml-auto text-sm font-bold text-[#8A9A5B] hover:underline"
+                          >
+                            + Buat Tugas
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -721,6 +743,7 @@ export default function App() {
                       <div className="font-bold text-sm truncate flex items-center gap-1">
                         {user.name}
                         <span className="text-[9px] bg-[#E5E0D8] text-[#4A4036] px-1 rounded">{user.className}</span>
+                        <span className="text-[9px] bg-[#8A9A5B] text-white px-1 rounded">{user.schoolName}</span>
                       </div>
                       <div className="text-xs text-[#A8A096]">{user.interactions} Interaksi</div>
                     </div>
