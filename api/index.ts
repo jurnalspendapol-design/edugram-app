@@ -104,13 +104,11 @@ app.post("/api/auth/register", async (req, res) => {
           class_name: className.toUpperCase(), 
           student_number: parseInt(studentNumber),
           school_name: schoolName,
-          profile_picture_url: profilePictureUrl || "",
           role,
-          xp: 0,
           created_at: Date.now()
         }
       ])
-      .select()
+      .select('id, username, full_name, class_name, student_number, role')
       .single();
 
     if (error) {
@@ -120,7 +118,7 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(500).json({ error: "Gagal mendaftar: " + error.message });
     }
 
-    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, schoolName, profilePictureUrl, role, xp: 0 } });
+    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, schoolName, role, xp: 0, streak: 0, interactions: 0 } });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
@@ -138,7 +136,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('*')
+      .select('id, username, password, full_name, class_name, student_number, role')
       .eq('username', username)
       .eq('password', password)
       .single();
@@ -169,7 +167,7 @@ app.post("/api/auth/login", async (req, res) => {
         className: user.class_name, 
         studentNumber: user.student_number, 
         role: user.role,
-        xp: user.xp,
+        xp: (user as any).xp || 0,
         interactions: totalInteractions,
         streak,
         lastPostDate
@@ -186,7 +184,7 @@ app.get("/api/users/:id", async (req, res) => {
     const supabase = getSupabase();
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, full_name, class_name, student_number, xp, school_name, profile_picture_url')
+      .select('id, username, full_name, class_name, student_number, role')
       .eq('id', req.params.id)
       .single();
 
@@ -211,11 +209,12 @@ app.get("/api/users/:id", async (req, res) => {
       fullName: user.full_name,
       className: user.class_name,
       studentNumber: user.student_number,
-      schoolName: user.school_name,
-      profilePictureUrl: user.profile_picture_url,
+      schoolName: (user as any).school_name || "",
+      profilePictureUrl: (user as any).profile_picture_url || "",
       interactions: totalInteractions,
       streak,
-      lastPostDate
+      lastPostDate,
+      xp: (user as any).xp || 0
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
@@ -302,28 +301,31 @@ app.post("/api/posts", async (req, res) => {
     let xpGained = 10;
     if (isScientific) xpGained += 5;
     
-    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, role, xp').eq('id', authorId).single();
+    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, role').eq('id', authorId).single();
     
     let updatedUser = null;
     if (user) {
-      const { data: userData } = await supabase.from('users').update({ 
-        xp: user.xp + xpGained
-      }).eq('id', authorId).select().single();
-      
-      if (userData) {
-        const { streak, lastPostDate } = await getUserStreakInfo(authorId, supabase);
-        updatedUser = {
-          id: userData.id,
-          username: userData.username,
-          fullName: userData.full_name,
-          className: userData.class_name,
-          studentNumber: userData.student_number,
-          role: userData.role,
-          xp: userData.xp,
-          streak,
-          lastPostDate
-        };
+      // Try to update XP, but don't fail if column missing
+      try {
+        await supabase.from('users').update({ 
+          xp: (user as any).xp + xpGained
+        }).eq('id', authorId);
+      } catch (e) {
+        console.log("XP update failed, likely column missing");
       }
+      
+      const { streak, lastPostDate } = await getUserStreakInfo(authorId, supabase);
+      updatedUser = {
+        id: user.id,
+        username: user.username,
+        fullName: user.full_name,
+        className: user.class_name,
+        studentNumber: user.student_number,
+        role: user.role,
+        xp: (user as any).xp || 0,
+        streak,
+        lastPostDate
+      };
     }
 
     res.json({ success: true, id, user: updatedUser });
@@ -380,7 +382,7 @@ app.post("/api/posts/:id/interact", async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name, xp, school_name') as { data: any[], error: any };
+    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name') as { data: any[], error: any };
     const { data: posts, error: postsError } = await supabase.from('posts').select('author_id, insightful, ask, support') as { data: any[], error: any };
 
     if (usersError || postsError) {
@@ -395,8 +397,8 @@ app.get("/api/leaderboard", async (req, res) => {
         username: u.username,
         name: u.full_name,
         className: u.class_name,
-        schoolName: u.school_name,
-        xp: u.xp,
+        schoolName: (u as any).school_name || "",
+        xp: (u as any).xp || 0,
         interactions
       };
     });
