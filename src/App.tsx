@@ -365,12 +365,76 @@ const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }
   );
 };
 
+// --- Assignment Modal Component ---
+const AssignmentModal = ({ 
+  isOpen, 
+  onClose, 
+  post, 
+  teacherId 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  post: Post | null, 
+  teacherId: string 
+}) => {
+  const [type, setType] = useState<'choice' | 'essay' | 'poll'>('choice');
+  const [question, setQuestion] = useState('');
+  const [options, setOptions] = useState(['', '']);
+
+  if (!isOpen || !post) return null;
+
+  const handleSubmit = async () => {
+    try {
+      const res = await fetch('/api/assignments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ postId: post.id, teacherId, type, question, options: type !== 'essay' ? options : null })
+      });
+      if (res.ok) {
+        onClose();
+        alert('Tugas berhasil dibuat!');
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <h2 className="text-xl font-bold mb-4">Buat Tugas untuk Postingan</h2>
+        <select value={type} onChange={(e) => setType(e.target.value as any)} className="w-full p-2 mb-4 border rounded-lg">
+          <option value="choice">Pilihan Ganda</option>
+          <option value="essay">Essai</option>
+          <option value="poll">Polling</option>
+        </select>
+        <textarea placeholder="Pertanyaan..." value={question} onChange={(e) => setQuestion(e.target.value)} className="w-full p-2 mb-4 border rounded-lg h-24" />
+        {type !== 'essay' && options.map((opt, i) => (
+          <input key={i} placeholder={`Opsi ${i + 1}`} value={opt} onChange={(e) => {
+            const newOpts = [...options];
+            newOpts[i] = e.target.value;
+            setOptions(newOpts);
+          }} className="w-full p-2 mb-2 border rounded-lg" />
+        ))}
+        <div className="flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-gray-500">Batal</button>
+          <button onClick={handleSubmit} className="px-4 py-2 bg-[#8A9A5B] text-white rounded-lg">Buat Tugas</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
   const [view, setView] = useState<'feed' | 'profile'>('feed');
+  
+  // Assignment Modal State
+  const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
+  const [selectedPostForAssignment, setSelectedPostForAssignment] = useState<Post | null>(null);
   
   // Form state
   const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
@@ -703,7 +767,10 @@ export default function App() {
 
                         {currentUser.role === 'teacher' && (
                           <button 
-                            onClick={() => {/* TODO: Implement assignment creation modal */}}
+                            onClick={() => {
+                              setSelectedPostForAssignment(post);
+                              setIsAssignmentModalOpen(true);
+                            }}
                             className="ml-auto text-sm font-bold text-[#8A9A5B] hover:underline"
                           >
                             + Buat Tugas
@@ -720,6 +787,12 @@ export default function App() {
 
         {/* Right Column: Leaderboard */}
         <div className="lg:col-span-1">
+          <AssignmentModal 
+            isOpen={isAssignmentModalOpen} 
+            onClose={() => setIsAssignmentModalOpen(false)} 
+            post={selectedPostForAssignment} 
+            teacherId={currentUser.id} 
+          />
           <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 sticky top-24">
             <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
               <Trophy className="w-5 h-5 text-[#D2B48C]" />
