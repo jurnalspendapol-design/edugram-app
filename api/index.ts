@@ -29,6 +29,52 @@ function getSupabase(): SupabaseClient {
   return supabaseInstance;
 }
 
+async function getUserStreakInfo(userId: string, supabase: SupabaseClient) {
+  try {
+    const { data: posts, error } = await supabase
+      .from('posts')
+      .select('created_at')
+      .eq('author_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error || !posts || posts.length === 0) return { streak: 0, lastPostDate: null };
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const lastPostDateObj = new Date(posts[0].created_at);
+    const lastPostDateISO = lastPostDateObj.toISOString().split('T')[0];
+    const lastPostDateMidnight = new Date(lastPostDateObj);
+    lastPostDateMidnight.setHours(0, 0, 0, 0);
+    
+    if (lastPostDateMidnight < yesterday) return { streak: 0, lastPostDate: lastPostDateISO };
+
+    const uniqueDates = Array.from(new Set(posts.map(p => {
+      const d = new Date(p.created_at);
+      d.setHours(0, 0, 0, 0);
+      return d.getTime();
+    }))).sort((a, b) => b - a);
+
+    let streak = 0;
+    let expectedDate = lastPostDateMidnight.getTime();
+    for (const date of uniqueDates) {
+      if (date === expectedDate) {
+        streak++;
+        expectedDate -= 24 * 60 * 60 * 1000;
+      } else {
+        break;
+      }
+    }
+
+    return { streak, lastPostDate: lastPostDateISO };
+  } catch (e) {
+    return { streak: 0, lastPostDate: null };
+  }
+}
+
 const app = express();
 app.use(express.json());
 
@@ -61,8 +107,6 @@ app.post("/api/auth/register", async (req, res) => {
           profile_picture_url: profilePictureUrl || "",
           role,
           xp: 0,
-          streak: 0,
-          last_post_date: null,
           created_at: Date.now()
         }
       ])
@@ -113,6 +157,8 @@ app.post("/api/auth/login", async (req, res) => {
     if (posts) {
       totalInteractions = posts.reduce((acc, post) => acc + post.insightful + post.ask + post.support, 0);
     }
+
+    const { streak, lastPostDate } = await getUserStreakInfo(user.id, supabase);
       
     res.json({ 
       success: true, 
@@ -125,8 +171,8 @@ app.post("/api/auth/login", async (req, res) => {
         role: user.role,
         xp: user.xp,
         interactions: totalInteractions,
-        streak: user.streak || 0,
-        lastPostDate: user.last_post_date
+        streak,
+        lastPostDate
       } 
     });
   } catch (error: any) {
@@ -140,7 +186,7 @@ app.get("/api/users/:id", async (req, res) => {
     const supabase = getSupabase();
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, full_name, class_name, student_number, xp, school_name, profile_picture_url, streak, last_post_date')
+      .select('id, username, full_name, class_name, student_number, xp, school_name, profile_picture_url')
       .eq('id', req.params.id)
       .single();
 
@@ -158,6 +204,8 @@ app.get("/api/users/:id", async (req, res) => {
       totalInteractions = posts.reduce((acc, post) => acc + post.insightful + post.ask + post.support, 0);
     }
 
+    const { streak, lastPostDate } = await getUserStreakInfo(user.id, supabase);
+
     res.json({ 
       ...user, 
       fullName: user.full_name,
@@ -166,8 +214,8 @@ app.get("/api/users/:id", async (req, res) => {
       schoolName: user.school_name,
       profilePictureUrl: user.profile_picture_url,
       interactions: totalInteractions,
-      streak: user.streak || 0,
-      lastPostDate: user.last_post_date
+      streak,
+      lastPostDate
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
@@ -250,39 +298,20 @@ app.post("/api/posts", async (req, res) => {
       return res.status(500).json({ error: "Gagal membuat postingan" });
     }
 
-    // Add XP to user and update streak
+    // Add XP to user
     let xpGained = 10;
     if (isScientific) xpGained += 5;
     
-    const today = new Date().toISOString().split('T')[0];
-    const { data: user } = await supabase.from('users').select('xp, streak, last_post_date').eq('id', authorId).single();
+    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, role, xp').eq('id', authorId).single();
     
     let updatedUser = null;
     if (user) {
-      let newStreak = user.streak || 0;
-      let lastDate = user.last_post_date;
-      
-      if (!lastDate) {
-        newStreak = 1;
-      } else {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
-        
-        if (lastDate === yesterdayStr) {
-          newStreak += 1;
-        } else if (lastDate !== today) {
-          newStreak = 1;
-        }
-      }
-      
       const { data: userData } = await supabase.from('users').update({ 
-        xp: user.xp + xpGained,
-        streak: newStreak,
-        last_post_date: today
+        xp: user.xp + xpGained
       }).eq('id', authorId).select().single();
       
       if (userData) {
+        const { streak, lastPostDate } = await getUserStreakInfo(authorId, supabase);
         updatedUser = {
           id: userData.id,
           username: userData.username,
@@ -291,8 +320,8 @@ app.post("/api/posts", async (req, res) => {
           studentNumber: userData.student_number,
           role: userData.role,
           xp: userData.xp,
-          streak: userData.streak,
-          lastPostDate: userData.last_post_date
+          streak,
+          lastPostDate
         };
       }
     }
