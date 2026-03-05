@@ -382,4 +382,21 @@ app.delete("/api/users/:id", async (req, res) => {
   }
 });
 
+// Get Students by School
+app.get("/api/students/:schoolName", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { data: students, error } = await supabase
+      .from('users')
+      .select('id, username, full_name, class_name, student_number')
+      .eq('school_name', req.params.schoolName)
+      .eq('role', 'student');
+
+    if (error) return res.status(500).json({ error: "Gagal mengambil data siswa" });
+    res.json(students);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default app;

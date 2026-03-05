@@ -425,12 +425,48 @@ const AssignmentModal = ({
   );
 };
 
+// --- Students View Component ---
+const StudentsView = ({ schoolName, teacherId }: { schoolName: string, teacherId: string }) => {
+  const [students, setStudents] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch(`/api/students/${schoolName}`)
+      .then(res => res.json())
+      .then(setStudents);
+  }, [schoolName]);
+
+  const deleteStudent = async (studentId: string) => {
+    if (!confirm('Yakin ingin menghapus siswa ini?')) return;
+    const res = await fetch(`/api/users/${studentId}`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ teacherId })
+    });
+    if (res.ok) setStudents(students.filter(s => s.id !== studentId));
+  };
+
+  return (
+    <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8]">
+      <h2 className="text-xl font-bold mb-4">Manajemen Siswa</h2>
+      {students.map(s => (
+        <div key={s.id} className="flex justify-between items-center p-4 border-b">
+          <div>
+            <div className="font-bold">{s.full_name}</div>
+            <div className="text-sm text-gray-500">{s.class_name} - Absen {s.student_number}</div>
+          </div>
+          <button onClick={() => deleteStudent(s.id)} className="text-red-500 font-bold">Hapus</button>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 // --- Main App Component ---
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
-  const [view, setView] = useState<'feed' | 'profile'>('feed');
+  const [view, setView] = useState<'feed' | 'profile' | 'students'>('feed');
   
   // Assignment Modal State
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -555,6 +591,10 @@ export default function App() {
     return <ProfilePage user={currentUser} onBack={() => setView('feed')} />;
   }
 
+  if (view === 'students') {
+    return <StudentsView schoolName={currentUser.schoolName} teacherId={currentUser.id} />;
+  }
+
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans selection:bg-[#8A9A5B] selection:text-white pb-20">
       {/* Header */}
@@ -567,6 +607,12 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-3">
+            <button onClick={() => setView('feed')} className={`text-sm font-bold ${view === 'feed' ? 'text-white' : 'text-white/70'}`}>Feed</button>
+            <button onClick={() => setView('profile')} className={`text-sm font-bold ${view === 'profile' ? 'text-white' : 'text-white/70'}`}>Profil</button>
+            {currentUser.role === 'teacher' && (
+              <button onClick={() => setView('students')} className={`text-sm font-bold ${view === 'students' ? 'text-white' : 'text-white/70'}`}>Siswa</button>
+            )}
+            <div className="w-px h-6 bg-[#8A9A5B] mx-2"></div>
             <button 
               onClick={() => setView('profile')}
               className="flex items-center gap-3 bg-[#7A8A4B] hover:bg-[#6A7A3B] px-4 py-1.5 rounded-full transition-colors cursor-pointer"
@@ -591,27 +637,28 @@ export default function App() {
         
         {/* Left Column: Feed & Input */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Create Post Form */}
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">
-            <form onSubmit={handlePost} className="space-y-4">
-              <div className="flex gap-4">
-                <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold shrink-0">
-                  {currentUser.fullName.charAt(0).toUpperCase()}
-                </div>
-                <div className="flex-1 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg font-bold">{currentUser.fullName}</span>
-                    <span className="text-xs font-bold bg-[#F4F1EA] text-[#8A9A5B] px-2 py-1 rounded-md border border-[#E5E0D8]">
-                      Kelas {currentUser.className}
-                    </span>
-                  </div>
-                  <select
-                    value={subbab}
-                    onChange={(e) => setSubbab(e.target.value as Subbab)}
-                    className="w-full sm:w-auto text-sm bg-[#F4F1EA] border border-[#E5E0D8] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] text-[#4A4036] font-medium"
-                  >
-                    <option value="Kesehatan Lingkungan">Kesehatan Lingkungan</option>
+          {view === 'feed' ? (
+            <>
+              {/* Create Post Form */}
+              <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">
+                <form onSubmit={handlePost} className="space-y-4">
+                  <div className="flex gap-4">
+                    <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold shrink-0">
+                      {currentUser.fullName.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg font-bold">{currentUser.fullName}</span>
+                        <span className="text-xs font-bold bg-[#F4F1EA] text-[#8A9A5B] px-2 py-1 rounded-md border border-[#E5E0D8]">
+                          Kelas {currentUser.className}
+                        </span>
+                      </div>
+                      <select
+                        value={subbab}
+                        onChange={(e) => setSubbab(e.target.value as Subbab)}
+                        className="w-full sm:w-auto text-sm bg-[#F4F1EA] border border-[#E5E0D8] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] text-[#4A4036] font-medium"
+                      >
+                        <option value="Kesehatan Lingkungan">Kesehatan Lingkungan</option>
                     <option value="Pemanasan Global">Pemanasan Global</option>
                     <option value="Krisis Energi">Krisis Energi</option>
                     <option value="Ketahanan Pangan">Ketahanan Pangan</option>
