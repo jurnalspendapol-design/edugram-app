@@ -91,7 +91,7 @@ app.post("/api/auth/register", async (req, res) => {
     }
 
     const role = registrationCode === 'whyedugram' ? 'teacher' : 'student';
-    const id = `${className.toUpperCase()}-${studentNumber}-${Date.now()}`;
+    const id = `${role.toUpperCase()}-${className.toUpperCase()}-${studentNumber}-${Date.now()}`;
 
     const { data, error } = await supabase
       .from('users')
@@ -104,11 +104,10 @@ app.post("/api/auth/register", async (req, res) => {
           class_name: className.toUpperCase(), 
           student_number: parseInt(studentNumber),
           school_name: schoolName,
-          role,
           created_at: Date.now()
         }
       ])
-      .select('id, username, full_name, class_name, student_number, role')
+      .select('id, username, full_name, class_name, student_number')
       .single();
 
     if (error) {
@@ -136,7 +135,7 @@ app.post("/api/auth/login", async (req, res) => {
 
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, password, full_name, class_name, student_number, role')
+      .select('id, username, password, full_name, class_name, student_number')
       .eq('username', username)
       .eq('password', password)
       .single();
@@ -166,7 +165,7 @@ app.post("/api/auth/login", async (req, res) => {
         fullName: user.full_name, 
         className: user.class_name, 
         studentNumber: user.student_number, 
-        role: user.role,
+        role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
         xp: (user as any).xp || 0,
         interactions: totalInteractions,
         streak,
@@ -184,7 +183,7 @@ app.get("/api/users/:id", async (req, res) => {
     const supabase = getSupabase();
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, full_name, class_name, student_number, role')
+      .select('id, username, full_name, class_name, student_number')
       .eq('id', req.params.id)
       .single();
 
@@ -214,7 +213,8 @@ app.get("/api/users/:id", async (req, res) => {
       interactions: totalInteractions,
       streak,
       lastPostDate,
-      xp: (user as any).xp || 0
+      xp: (user as any).xp || 0,
+      role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student')
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
@@ -301,7 +301,7 @@ app.post("/api/posts", async (req, res) => {
     let xpGained = 10;
     if (isScientific) xpGained += 5;
     
-    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, role').eq('id', authorId).single();
+    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number').eq('id', authorId).single();
     
     let updatedUser = null;
     if (user) {
@@ -321,7 +321,7 @@ app.post("/api/posts", async (req, res) => {
         fullName: user.full_name,
         className: user.class_name,
         studentNumber: user.student_number,
-        role: user.role,
+        role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
         xp: (user as any).xp || 0,
         streak,
         lastPostDate
