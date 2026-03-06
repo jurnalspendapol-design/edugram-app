@@ -241,25 +241,111 @@ app.get("/api/posts", async (req, res) => {
       return res.status(500).json({ error: "Gagal mengambil postingan" });
     }
 
-    const formattedPosts = posts.map(p => ({
-      id: p.id,
-      authorId: p.author_id,
-      authorName: p.users?.full_name,
-      authorClass: p.users?.class_name,
-      authorUsername: p.users?.username,
-      subbab: p.subbab,
-      caption: p.caption,
-      imageUrl: p.image_url,
-      insightful: p.insightful,
-      ask: p.ask,
-      support: p.support,
-      timestamp: p.created_at,
-      isScientific: Boolean(p.is_scientific)
-    }));
+    // Fetch comment counts for all posts
+    let commentCounts: any[] = [];
+    try {
+      const { data } = await supabase
+        .from('comments')
+        .select('post_id');
+      if (data) commentCounts = data;
+    } catch (e) {
+      console.log("Comments table likely missing");
+    }
+
+    const formattedPosts = posts.map(p => {
+      const count = commentCounts ? commentCounts.filter(c => c.post_id === p.id).length : 0;
+      return {
+        id: p.id,
+        authorId: p.author_id,
+        authorName: p.users?.full_name,
+        authorClass: p.users?.class_name,
+        authorUsername: p.users?.username,
+        subbab: p.subbab,
+        caption: p.caption,
+        imageUrl: p.image_url,
+        insightful: p.insightful,
+        ask: p.ask,
+        support: p.support,
+        timestamp: p.created_at,
+        isScientific: Boolean(p.is_scientific),
+        commentCount: count
+      };
+    });
 
     res.json(formattedPosts);
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+  }
+});
+
+// Get Comments for a Post
+app.get("/api/posts/:postId/comments", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { data: comments, error } = await supabase
+      .from('comments')
+      .select(`
+        *,
+        users (
+          full_name,
+          class_name
+        )
+      `)
+      .eq('post_id', req.params.postId)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.log("Comments error:", error.message);
+      return res.json([]); // Return empty if table missing or error
+    }
+
+    const formattedComments = comments.map(c => ({
+      id: c.id,
+      postId: c.post_id,
+      authorId: c.author_id,
+      authorName: c.users?.full_name,
+      authorClass: c.users?.class_name,
+      content: c.content,
+      timestamp: c.created_at
+    }));
+
+    res.json(formattedComments);
+  } catch (error: any) {
+    res.json([]); // Return empty on catch
+  }
+});
+
+// Create Comment
+app.post("/api/posts/:postId/comments", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { authorId, content } = req.body;
+    const postId = req.params.postId;
+
+    if (!authorId || !content) return res.status(400).json({ error: "Data tidak lengkap" });
+
+    const id = Date.now().toString();
+    const { error } = await supabase
+      .from('comments')
+      .insert([{
+        id,
+        post_id: postId,
+        author_id: authorId,
+        content,
+        created_at: Date.now()
+      }]);
+
+    if (error) return res.status(500).json({ error: "Gagal mengirim komentar: " + error.message });
+
+    // Add XP to commenter
+    const { data: user } = await supabase.from('users').select('xp').eq('id', authorId).single();
+    if (user) {
+      await supabase.from('users').update({ xp: (user as any).xp + 2 }).eq('id', authorId);
+    }
+
+    res.json({ success: true, id });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 

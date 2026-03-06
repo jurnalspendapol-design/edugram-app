@@ -38,7 +38,18 @@ interface Post {
   support: number;
   timestamp: number;
   isScientific: boolean;
+  commentCount: number;
   assignments?: any[];
+}
+
+interface Comment {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  authorClass: string;
+  content: string;
+  timestamp: number;
 }
 
 interface UserStats {
@@ -571,12 +582,192 @@ const StudentsView = ({ schoolName, teacherId }: { schoolName: string, teacherId
   );
 };
 
+// --- Comment Section Component ---
+const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: string, currentUser: UserProfile, onCommentAdded: () => void }) => {
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [newComment, setNewComment] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchComments = async () => {
+    try {
+      const res = await fetch(`/api/posts/${postId}/comments`);
+      if (res.ok) {
+        const data = await res.json();
+        setComments(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch comments", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchComments();
+  }, [postId]);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newComment.trim() || isLoading) return;
+
+    setIsLoading(true);
+    try {
+      const res = await fetch(`/api/posts/${postId}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ authorId: currentUser.id, content: newComment })
+      });
+
+      if (res.ok) {
+        setNewComment('');
+        fetchComments();
+        onCommentAdded();
+      }
+    } catch (err) {
+      console.error("Failed to post comment", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 pt-4 border-t border-[#E5E0D8] space-y-4">
+      <div className="space-y-3">
+        {comments.map(comment => (
+          <div key={comment.id} className="flex gap-3">
+            <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-xs font-bold shrink-0">
+              {comment.authorName.charAt(0).toUpperCase()}
+            </div>
+            <div className="flex-1 bg-[#F4F1EA] rounded-2xl px-4 py-2">
+              <div className="flex items-center gap-2 mb-0.5">
+                <span className="text-sm font-bold">{comment.authorName}</span>
+                <span className="text-[10px] font-bold text-[#A8A096] uppercase tracking-wider">
+                  {comment.authorClass}
+                </span>
+              </div>
+              <p className="text-sm text-[#4A4036]">{comment.content}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex gap-3 items-center">
+        <div className="w-8 h-8 rounded-full bg-[#8A9A5B] flex items-center justify-center text-white text-xs font-bold shrink-0">
+          {currentUser.fullName.charAt(0).toUpperCase()}
+        </div>
+        <div className="flex-1 relative">
+          <input
+            type="text"
+            placeholder="Tulis komentar..."
+            value={newComment}
+            onChange={(e) => setNewComment(e.target.value)}
+            className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-full px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#8A9A5B]"
+          />
+          <button
+            type="submit"
+            disabled={!newComment.trim() || isLoading}
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-[#8A9A5B] disabled:opacity-50"
+          >
+            <Send className="w-4 h-4" />
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+// --- Tutorial Modal Component ---
+const TutorialModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  const [step, setStep] = useState(0);
+
+  const steps = [
+    {
+      title: "Selamat Datang di EduGram! 🌿",
+      content: "EduGram adalah platform sosial media khusus untuk kamu para Eco-Influencer sekolah. Di sini kita berbagi aksi nyata menjaga bumi.",
+      icon: <Leaf className="w-12 h-12 text-[#8A9A5B]" />
+    },
+    {
+      title: "Berbagi Aksi Nyata 📸",
+      content: "Posting kegiatan ramah lingkunganmu. Gunakan kata ilmiah seperti 'Emisi', 'Limbah', atau 'Biogas' untuk mendapatkan bonus +5 XP!",
+      icon: <ImageIcon className="w-12 h-12 text-[#D2B48C]" />
+    },
+    {
+      title: "Interaksi Edukatif 💡",
+      content: "Gunakan tombol Insightful (💡), Ask (❓), atau Support (❤️). Setiap interaksi yang kamu berikan atau terima akan menambah XP-mu!",
+      icon: <Sparkles className="w-12 h-12 text-yellow-500" />
+    },
+    {
+      title: "Berdiskusi & Belajar 💬",
+      content: "Gunakan fitur komentar untuk berdiskusi lebih dalam dengan teman-temanmu. Setiap komentar memberimu +2 XP!",
+      icon: <MessageSquare className="w-12 h-12 text-blue-500" />
+    },
+    {
+      title: "Misi Harian & Leaderboard 🏆",
+      content: "Selesaikan 'Misi Hari Ini' dan kumpulkan XP untuk menjadi Top Eco-Influencer di sekolahmu!",
+      icon: <Trophy className="w-12 h-12 text-orange-500" />
+    }
+  ];
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+      <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+        <div className="bg-[#8A9A5B] p-8 flex justify-center">
+          <div className="bg-white/20 p-4 rounded-2xl backdrop-blur-md">
+            {steps[step].icon}
+          </div>
+        </div>
+        
+        <div className="p-8 text-center">
+          <h2 className="text-2xl font-bold text-[#4A4036] mb-4">{steps[step].title}</h2>
+          <p className="text-[#A8A096] leading-relaxed mb-8">
+            {steps[step].content}
+          </p>
+          
+          <div className="flex items-center justify-center gap-2 mb-8">
+            {steps.map((_, i) => (
+              <div 
+                key={i} 
+                className={`h-1.5 rounded-full transition-all duration-300 ${i === step ? 'w-8 bg-[#8A9A5B]' : 'w-2 bg-[#E5E0D8]'}`}
+              />
+            ))}
+          </div>
+          
+          <div className="flex gap-3">
+            {step > 0 && (
+              <button 
+                onClick={() => setStep(step - 1)}
+                className="flex-1 py-3 px-6 rounded-xl font-bold text-[#A8A096] hover:bg-[#F4F1EA] transition-colors"
+              >
+                Kembali
+              </button>
+            )}
+            <button 
+              onClick={() => {
+                if (step < steps.length - 1) {
+                  setStep(step + 1);
+                } else {
+                  onClose();
+                }
+              }}
+              className="flex-1 py-3 px-6 bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white rounded-xl font-bold shadow-lg shadow-[#8A9A5B]/20 transition-all active:scale-95"
+            >
+              {step === steps.length - 1 ? "Mulai Sekarang!" : "Lanjut"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App Component ---
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
   const [view, setView] = useState<'feed' | 'profile' | 'students'>('feed');
+  const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
+  const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   
   // Assignment Modal State
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -626,6 +817,19 @@ export default function App() {
   const handleLogin = (profile: UserProfile) => {
     setCurrentUser(profile);
     localStorage.setItem('edugram_user_profile', JSON.stringify(profile));
+    
+    // Check if tutorial has been seen
+    const hasSeenTutorial = localStorage.getItem(`edugram_tutorial_seen_${profile.id}`);
+    if (!hasSeenTutorial) {
+      setIsTutorialOpen(true);
+    }
+  };
+
+  const handleCloseTutorial = () => {
+    setIsTutorialOpen(false);
+    if (currentUser) {
+      localStorage.setItem(`edugram_tutorial_seen_${currentUser.id}`, 'true');
+    }
   };
 
   const handleLogout = () => {
@@ -712,6 +916,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans selection:bg-[#8A9A5B] selection:text-white pb-20">
+      <TutorialModal isOpen={isTutorialOpen} onClose={handleCloseTutorial} />
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -722,6 +927,13 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setIsTutorialOpen(true)}
+              className="p-2 hover:bg-[#7A8A4B] rounded-full transition-colors text-white/80 hover:text-white"
+              title="Panduan Penggunaan"
+            >
+              <MessageCircleQuestion className="w-5 h-5" />
+            </button>
             <button onClick={() => setView('feed')} className="text-sm font-bold text-white">Feed</button>
             <button onClick={() => setView('profile')} className="text-sm font-bold text-white/70">Profil</button>
             {currentUser.role === 'teacher' && (
@@ -926,6 +1138,16 @@ export default function App() {
                           <span className={`text-sm font-medium ${post.support > 0 ? 'text-red-600' : ''}`}>{post.support}</span>
                         </button>
 
+                        <button 
+                          onClick={() => setOpenComments(prev => ({ ...prev, [post.id]: !prev[post.id] }))}
+                          className="flex items-center gap-1.5 text-[#A8A096] hover:text-[#8A9A5B] transition-colors group"
+                        >
+                          <div className="p-1.5 rounded-full group-hover:bg-[#8A9A5B]/10 transition-colors">
+                            <MessageSquare className={`w-5 h-5 ${openComments[post.id] ? 'text-[#8A9A5B] fill-[#8A9A5B]/20' : ''}`} />
+                          </div>
+                          <span className={`text-sm font-medium ${openComments[post.id] ? 'text-[#8A9A5B]' : ''}`}>{post.commentCount || 0}</span>
+                        </button>
+
                         {currentUser.role === 'teacher' && (
                           <button 
                             onClick={() => {
@@ -938,6 +1160,14 @@ export default function App() {
                           </button>
                         )}
                       </div>
+
+                      {openComments[post.id] && (
+                        <CommentSection 
+                          postId={post.id} 
+                          currentUser={currentUser} 
+                          onCommentAdded={() => fetchData()} 
+                        />
+                      )}
                     </div>
                   </div>
                 </div>
