@@ -316,7 +316,7 @@ app.post("/api/users/:id/follow", async (req, res) => {
         id: Date.now().toString(),
         follower_id: followerId,
         following_id: followingId,
-        created_at: Date.now()
+        created_at: new Date().toISOString()
       }]);
       res.json({ success: true, action: 'followed' });
     }
@@ -531,7 +531,12 @@ app.post("/api/posts", async (req, res) => {
       ]);
 
     if (error) {
-      return res.status(500).json({ error: "Gagal membuat postingan" });
+      console.error("Post creation error details:", error);
+      return res.status(500).json({ 
+        error: "Gagal membuat postingan: " + error.message,
+        details: error.details,
+        hint: "Pastikan tabel 'posts' memiliki kolom 'created_at' dengan tipe TIMESTAMPTZ. Jalankan SQL perbaikan jika perlu."
+      });
     }
 
     // Add XP to user

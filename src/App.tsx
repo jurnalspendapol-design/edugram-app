@@ -1167,9 +1167,17 @@ export default function App() {
         setCaption('');
         setImageUrl('');
         fetchData(); // Refresh feed
+      } else {
+        const data = await res.json();
+        let errorMessage = data.error || 'Gagal mengirim postingan';
+        if (data.hint) {
+          errorMessage += `\n\nTips: ${data.hint}`;
+        }
+        alert(errorMessage);
       }
     } catch (err) {
       console.error("Failed to post", err);
+      alert('Terjadi kesalahan koneksi saat mengirim postingan');
     }
   };
 
