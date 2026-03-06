@@ -631,7 +631,7 @@ app.post("/api/posts/:id/interact", async (req, res) => {
           post_id: postId,
           user_id: userId,
           type,
-          created_at: Date.now()
+          created_at: new Date().toISOString()
         }]);
       } catch (e) {}
       newCount = post[type] + 1;
@@ -706,7 +706,15 @@ app.post("/api/assignments", async (req, res) => {
     const id = Date.now().toString();
     const { error } = await supabase
       .from('assignments')
-      .insert([{ id, post_id: postId, teacher_id: teacherId, type, question, options, created_at: Date.now() }]);
+      .insert([{ 
+        id, 
+        post_id: postId, 
+        teacher_id: teacherId, 
+        type, 
+        question, 
+        options, 
+        created_at: new Date().toISOString() 
+      }]);
 
     if (error) return res.status(500).json({ error: "Gagal membuat tugas" });
     res.json({ success: true, id });
