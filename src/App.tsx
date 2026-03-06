@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2 } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag } from 'lucide-react';
 
 type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
 
@@ -712,6 +712,129 @@ const AssignmentModal = ({
   );
 };
 
+// --- Report Modal Component ---
+const ReportModal = ({ 
+  isOpen, 
+  onClose, 
+  post, 
+  reporterId 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  post: Post | null, 
+  reporterId: string 
+}) => {
+  const [reason, setReason] = useState('');
+  const [description, setDescription] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  if (!isOpen || !post) return null;
+
+  const handleSubmit = async () => {
+    if (!reason) {
+      alert('Silakan pilih alasan pelaporan');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`/api/posts/${post.id}/report`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reporterId, reason, description })
+      });
+      if (res.ok) {
+        alert('Terima kasih. Laporan Anda telah kami terima dan akan segera ditinjau.');
+        onClose();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Gagal mengirim laporan');
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Terjadi kesalahan saat mengirim laporan');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const reportReasons = [
+    'Konten Tidak Senonoh / Pornografi',
+    'Kekerasan / Konten Sadis',
+    'Pelecehan / Perundungan (Bullying)',
+    'Ujaran Kebencian',
+    'Spam / Penipuan',
+    'Informasi Palsu (Hoax)',
+    'Lainnya'
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-[#E5E0D8]">
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-red-50 rounded-xl">
+              <AlertTriangle className="w-6 h-6 text-red-500" />
+            </div>
+            <h2 className="text-xl font-bold text-[#4A4036]">Laporkan Postingan</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-5 h-5 text-[#A8A096]" />
+          </button>
+        </div>
+
+        <div className="space-y-6">
+          <div>
+            <label className="block text-sm font-bold text-[#4A4036] mb-3">Pilih Alasan:</label>
+            <div className="grid grid-cols-1 gap-2">
+              {reportReasons.map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setReason(r)}
+                  className={`text-left px-4 py-3 rounded-xl text-sm font-medium transition-all border ${
+                    reason === r 
+                      ? 'bg-red-50 border-red-200 text-red-700 shadow-sm' 
+                      : 'bg-[#F4F1EA] border-[#E5E0D8] text-[#4A4036] hover:border-[#8A9A5B]/30'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-[#4A4036] mb-2">Keterangan Tambahan (Opsional):</label>
+            <textarea
+              placeholder="Berikan detail lebih lanjut jika diperlukan..."
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full p-4 bg-[#F4F1EA] border border-[#E5E0D8] rounded-2xl h-28 text-sm focus:ring-2 focus:ring-red-500/20 focus:border-red-500 outline-none transition-all resize-none"
+            />
+          </div>
+
+          <div className="flex gap-4 pt-2">
+            <button 
+              onClick={onClose} 
+              className="flex-1 py-3.5 text-sm font-bold text-[#A8A096] hover:bg-gray-50 rounded-2xl transition-colors"
+            >
+              Batal
+            </button>
+            <button 
+              onClick={handleSubmit} 
+              disabled={isSubmitting || !reason}
+              className="flex-1 py-3.5 bg-red-500 text-white text-sm font-bold rounded-2xl shadow-lg shadow-red-500/20 hover:bg-red-600 disabled:opacity-50 disabled:shadow-none transition-all flex items-center justify-center gap-2"
+            >
+              {isSubmitting ? 'Mengirim...' : 'Kirim Laporan'}
+              {!isSubmitting && <Flag className="w-4 h-4" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Students View Component ---
 const StudentsView = ({ schoolName, teacherId }: { schoolName: string, teacherId: string }) => {
   const [students, setStudents] = useState<any[]>([]);
@@ -786,9 +909,13 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
         setNewComment('');
         fetchComments();
         onCommentAdded();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Gagal mengirim komentar');
       }
     } catch (err) {
       console.error("Failed to post comment", err);
+      alert('Terjadi kesalahan koneksi saat mengirim komentar');
     } finally {
       setIsLoading(false);
     }
@@ -800,13 +927,13 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
         {comments.map(comment => (
           <div key={comment.id} className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {comment.authorName.charAt(0).toUpperCase()}
+              {(comment.authorName || 'U').charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 bg-[#F4F1EA] rounded-2xl px-4 py-2">
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm font-bold">{comment.authorName}</span>
+                <span className="text-sm font-bold">{comment.authorName || 'User'}</span>
                 <span className="text-[10px] font-bold text-[#A8A096] uppercase tracking-wider">
-                  {comment.authorClass}
+                  {comment.authorClass || 'Siswa'}
                 </span>
               </div>
               <p className="text-sm text-[#4A4036]">{comment.content}</p>
@@ -939,6 +1066,10 @@ export default function App() {
   // Assignment Modal State
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
   const [selectedPostForAssignment, setSelectedPostForAssignment] = useState<Post | null>(null);
+
+  // Report Modal State
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [selectedPostForReport, setSelectedPostForReport] = useState<Post | null>(null);
   
   // Form state
   const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
@@ -1352,6 +1483,19 @@ export default function App() {
                             + Buat Tugas
                           </button>
                         )}
+
+                        <button 
+                          onClick={() => {
+                            setSelectedPostForReport(post);
+                            setIsReportModalOpen(true);
+                          }}
+                          className={`flex items-center gap-1.5 text-[#A8A096] hover:text-red-500 transition-colors group ${currentUser.role !== 'teacher' ? 'ml-auto' : 'ml-4'}`}
+                          title="Laporkan Postingan"
+                        >
+                          <div className="p-1.5 rounded-full group-hover:bg-red-50 transition-colors">
+                            <Flag className="w-4 h-4" />
+                          </div>
+                        </button>
                       </div>
 
                       {openComments[post.id] && (
@@ -1376,6 +1520,12 @@ export default function App() {
             onClose={() => setIsAssignmentModalOpen(false)} 
             post={selectedPostForAssignment} 
             teacherId={currentUser.id} 
+          />
+          <ReportModal 
+            isOpen={isReportModalOpen} 
+            onClose={() => setIsReportModalOpen(false)} 
+            post={selectedPostForReport} 
+            reporterId={currentUser.id} 
           />
           <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 sticky top-24">
             <h2 className="font-bold text-lg mb-4 flex items-center gap-2">

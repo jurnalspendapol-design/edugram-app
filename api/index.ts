@@ -114,7 +114,7 @@ app.post("/api/auth/register", async (req, res) => {
           student_number: finalStudentNumber,
           school_name: schoolName,
           role,
-          created_at: Date.now()
+          created_at: new Date().toISOString()
         }
       ])
       .select('id, username, full_name, class_name, student_number')
@@ -451,7 +451,7 @@ app.post("/api/posts/:postId/comments", async (req, res) => {
         post_id: postId,
         author_id: authorId,
         content,
-        created_at: Date.now()
+        created_at: new Date().toISOString()
       }]);
 
     if (error) return res.status(500).json({ error: "Gagal mengirim komentar: " + error.message });
@@ -468,6 +468,38 @@ app.post("/api/posts/:postId/comments", async (req, res) => {
   }
 });
 
+// Report Post
+app.post("/api/posts/:postId/report", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { reporterId, reason, description } = req.body;
+    const postId = req.params.postId;
+
+    if (!reporterId || !reason) return res.status(400).json({ error: "Data tidak lengkap" });
+
+    const id = Date.now().toString();
+    const { error } = await supabase
+      .from('reports')
+      .insert([{
+        id,
+        post_id: postId,
+        reporter_id: reporterId,
+        reason,
+        description,
+        created_at: new Date().toISOString()
+      }]);
+
+    if (error) {
+      console.error("Report error:", error.message);
+      return res.status(500).json({ error: "Gagal mengirim laporan: " + error.message });
+    }
+    
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+  }
+});
+
 // Create Post
 app.post("/api/posts", async (req, res) => {
   try {
@@ -479,7 +511,7 @@ app.post("/api/posts", async (req, res) => {
     }
 
     const id = Date.now().toString();
-    const createdAt = Date.now();
+    const createdAt = new Date().toISOString();
 
     const { error } = await supabase
       .from('posts')
