@@ -86,12 +86,21 @@ app.post("/api/auth/register", async (req, res) => {
     const supabase = getSupabase();
     const { username, password, fullName, className, studentNumber, schoolName, profilePictureUrl, registrationCode } = req.body;
     
-    if (!username || !password || !fullName || !className || !studentNumber || !schoolName) {
-      return res.status(400).json({ error: "Semua field wajib harus diisi" });
+    const isTeacher = registrationCode === 'whyedugram';
+    
+    if (!username || !password || !fullName || !schoolName) {
+      return res.status(400).json({ error: "Username, password, nama, dan sekolah wajib diisi" });
     }
 
-    const role = registrationCode === 'whyedugram' ? 'teacher' : 'student';
-    const id = `${role.toUpperCase()}-${className.toUpperCase()}-${studentNumber}-${Date.now()}`;
+    if (!isTeacher && (!className || !studentNumber)) {
+      return res.status(400).json({ error: "Siswa wajib mengisi kelas dan nomor absen" });
+    }
+
+    const role = isTeacher ? 'teacher' : 'student';
+    const finalClassName = className ? className.toUpperCase() : "GURU";
+    const finalStudentNumber = studentNumber ? parseInt(studentNumber) : 0;
+    
+    const id = `${role.toUpperCase()}-${finalClassName}-${finalStudentNumber}-${Date.now()}`;
 
     const { data, error } = await supabase
       .from('users')
@@ -101,9 +110,10 @@ app.post("/api/auth/register", async (req, res) => {
           username, 
           password, 
           full_name: fullName, 
-          class_name: className.toUpperCase(), 
-          student_number: parseInt(studentNumber),
+          class_name: finalClassName, 
+          student_number: finalStudentNumber,
           school_name: schoolName,
+          role,
           created_at: Date.now()
         }
       ])
@@ -181,6 +191,8 @@ app.post("/api/auth/login", async (req, res) => {
 app.get("/api/users/:id", async (req, res) => {
   try {
     const supabase = getSupabase();
+    const viewerId = req.query.viewerId as string;
+    
     const { data: user, error } = await supabase
       .from('users')
       .select('id, username, full_name, class_name, student_number')
@@ -203,6 +215,37 @@ app.get("/api/users/:id", async (req, res) => {
 
     const { streak, lastPostDate } = await getUserStreakInfo(user.id, supabase);
 
+    // Fetch followers and following counts
+    let followersCount = 0;
+    let followingCount = 0;
+    let isFollowing = false;
+
+    try {
+      const { count: followers } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('following_id', user.id);
+      followersCount = followers || 0;
+
+      const { count: following } = await supabase
+        .from('follows')
+        .select('*', { count: 'exact', head: true })
+        .eq('follower_id', user.id);
+      followingCount = following || 0;
+
+      if (viewerId) {
+        const { data: followData } = await supabase
+          .from('follows')
+          .select('id')
+          .eq('follower_id', viewerId)
+          .eq('following_id', user.id)
+          .maybeSingle();
+        isFollowing = !!followData;
+      }
+    } catch (e) {
+      console.log("Follows table likely missing");
+    }
+
     res.json({ 
       ...user, 
       fullName: user.full_name,
@@ -210,14 +253,75 @@ app.get("/api/users/:id", async (req, res) => {
       studentNumber: user.student_number,
       schoolName: (user as any).school_name || "",
       profilePictureUrl: (user as any).profile_picture_url || "",
+      bio: (user as any).bio || "",
       interactions: totalInteractions,
       streak,
       lastPostDate,
       xp: (user as any).xp || 0,
-      role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student')
+      role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
+      followersCount,
+      followingCount,
+      isFollowing
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+  }
+});
+
+// Update User Profile
+app.post("/api/users/:id/profile", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { bio, profilePictureUrl } = req.body;
+    const userId = req.params.id;
+
+    const { error } = await supabase
+      .from('users')
+      .update({ 
+        bio: bio || "",
+        profile_picture_url: profilePictureUrl || ""
+      })
+      .eq('id', userId);
+
+    if (error) return res.status(500).json({ error: "Gagal memperbarui profil" });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Toggle Follow
+app.post("/api/users/:id/follow", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { followerId } = req.body;
+    const followingId = req.params.id;
+
+    if (!followerId || followerId === followingId) {
+      return res.status(400).json({ error: "Data tidak valid" });
+    }
+
+    const { data: existingFollow } = await supabase
+      .from('follows')
+      .select('id')
+      .eq('follower_id', followerId)
+      .eq('following_id', followingId)
+      .maybeSingle();
+
+    if (existingFollow) {
+      await supabase.from('follows').delete().eq('id', existingFollow.id);
+      res.json({ success: true, action: 'unfollowed' });
+    } else {
+      await supabase.from('follows').insert([{
+        id: Date.now().toString(),
+        follower_id: followerId,
+        following_id: followingId,
+        created_at: Date.now()
+      }]);
+      res.json({ success: true, action: 'followed' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -225,6 +329,8 @@ app.get("/api/users/:id", async (req, res) => {
 app.get("/api/posts", async (req, res) => {
   try {
     const supabase = getSupabase();
+    const userId = req.query.userId as string;
+    
     const { data: posts, error } = await supabase
       .from('posts')
       .select(`
@@ -241,19 +347,31 @@ app.get("/api/posts", async (req, res) => {
       return res.status(500).json({ error: "Gagal mengambil postingan" });
     }
 
-    // Fetch comment counts for all posts
+    // Fetch comment counts
     let commentCounts: any[] = [];
     try {
-      const { data } = await supabase
-        .from('comments')
-        .select('post_id');
+      const { data } = await supabase.from('comments').select('post_id');
       if (data) commentCounts = data;
-    } catch (e) {
-      console.log("Comments table likely missing");
+    } catch (e) {}
+
+    // Fetch user interactions if userId provided
+    let userInteractions: any[] = [];
+    if (userId) {
+      try {
+        const { data } = await supabase
+          .from('interactions')
+          .select('post_id, type')
+          .eq('user_id', userId);
+        if (data) userInteractions = data;
+      } catch (e) {}
     }
 
     const formattedPosts = posts.map(p => {
-      const count = commentCounts ? commentCounts.filter(c => c.post_id === p.id).length : 0;
+      const count = commentCounts.filter(c => c.post_id === p.id).length;
+      const interactions = userInteractions
+        .filter(i => i.post_id === p.id)
+        .map(i => i.type);
+
       return {
         id: p.id,
         authorId: p.author_id,
@@ -268,7 +386,8 @@ app.get("/api/posts", async (req, res) => {
         support: p.support,
         timestamp: p.created_at,
         isScientific: Boolean(p.is_scientific),
-        commentCount: count
+        commentCount: count,
+        userInteractions: interactions
       };
     });
 
@@ -420,42 +539,85 @@ app.post("/api/posts", async (req, res) => {
   }
 });
 
-// Interact with Post
+// Interact with Post (Toggle)
 app.post("/api/posts/:id/interact", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { type } = req.body; // 'insightful', 'ask', 'support'
+    const { type, userId } = req.body; // 'insightful', 'ask', 'support'
     const postId = req.params.id;
 
     if (!['insightful', 'ask', 'support'].includes(type)) {
       return res.status(400).json({ error: "Tipe interaksi tidak valid" });
     }
+    if (!userId) {
+      return res.status(400).json({ error: "User ID wajib disertakan" });
+    }
 
-    // Fetch current post to increment
-    const { data: postData, error } = await supabase
+    // Check if interaction already exists
+    let existingInteraction = null;
+    try {
+      const { data } = await supabase
+        .from('interactions')
+        .select('id')
+        .eq('post_id', postId)
+        .eq('user_id', userId)
+        .eq('type', type)
+        .maybeSingle();
+      existingInteraction = data;
+    } catch (e) {
+      // If table missing, we'll just proceed with simple increment for now
+      console.log("Interactions table likely missing, falling back to simple increment");
+    }
+
+    // Fetch current post to update counts
+    const { data: postData, error: fetchError } = await supabase
       .from('posts')
       .select(`author_id, ${type}`)
       .eq('id', postId)
       .single();
 
-    const post = postData as any;
-
-    if (error || !post) {
+    if (fetchError || !postData) {
       return res.status(404).json({ error: "Post tidak ditemukan" });
+    }
+
+    const post = postData as any;
+    let newCount = post[type];
+    let xpChange = 0;
+
+    if (existingInteraction) {
+      // Toggle OFF: Delete interaction and decrement
+      try {
+        await supabase.from('interactions').delete().eq('id', existingInteraction.id);
+      } catch (e) {}
+      newCount = Math.max(0, post[type] - 1);
+      xpChange = -2;
+    } else {
+      // Toggle ON: Create interaction and increment
+      try {
+        await supabase.from('interactions').insert([{
+          id: Date.now().toString(),
+          post_id: postId,
+          user_id: userId,
+          type,
+          created_at: Date.now()
+        }]);
+      } catch (e) {}
+      newCount = post[type] + 1;
+      xpChange = 2;
     }
 
     const { error: updateError } = await supabase
       .from('posts')
-      .update({ [type]: post[type] + 1 })
+      .update({ [type]: newCount })
       .eq('id', postId);
 
     if (!updateError) {
-      // Add XP to post author
+      // Update XP for post author
       const { data: author } = await supabase.from('users').select('xp').eq('id', post.author_id).single();
       if (author) {
-        await supabase.from('users').update({ xp: author.xp + 2 }).eq('id', post.author_id);
+        await supabase.from('users').update({ xp: Math.max(0, (author as any).xp + xpChange) }).eq('id', post.author_id);
       }
-      res.json({ success: true });
+      res.json({ success: true, action: existingInteraction ? 'removed' : 'added', count: newCount });
     } else {
       res.status(500).json({ error: "Gagal melakukan interaksi" });
     }

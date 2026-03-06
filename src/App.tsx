@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2 } from 'lucide-react';
 
 type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
 
@@ -17,10 +17,14 @@ interface UserProfile {
   studentNumber: string;
   schoolName: string;
   profilePictureUrl: string;
+  bio: string;
   role: 'student' | 'teacher';
   xp: number;
   interactions: number;
   streak: number;
+  followersCount: number;
+  followingCount: number;
+  isFollowing?: boolean;
   lastPostDate?: string; // ISO string YYYY-MM-DD
 }
 
@@ -30,6 +34,7 @@ interface Post {
   authorName: string;
   authorClass: string;
   authorUsername?: string;
+  authorIsFollowing?: boolean;
   subbab: Subbab;
   caption: string;
   imageUrl: string;
@@ -39,6 +44,7 @@ interface Post {
   timestamp: number;
   isScientific: boolean;
   commentCount: number;
+  userInteractions: string[];
   assignments?: any[];
 }
 
@@ -201,8 +207,16 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
           setError(data.error || 'Gagal login');
         }
       } else {
-        if (!username || !password || !fullName || !className || !studentNumber || !schoolName) {
-          setError('Semua field wajib diisi');
+        const isTeacher = registrationCode === 'whyedugram';
+        
+        if (!username || !password || !fullName || !schoolName) {
+          setError('Field wajib harus diisi');
+          setLoading(false);
+          return;
+        }
+
+        if (!isTeacher && (!className || !studentNumber)) {
+          setError('Siswa wajib mengisi kelas dan nomor absen');
           setLoading(false);
           return;
         }
@@ -299,18 +313,22 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Kelas</label>
+                    <label className="block text-sm font-bold text-[#4A4036] mb-1.5">
+                      Kelas {registrationCode === 'whyedugram' && <span className="text-[#A8A096] font-normal">(Opsional)</span>}
+                    </label>
                     <input
                       type="text"
                       placeholder="Contoh: 7A"
                       value={className}
                       onChange={(e) => setClassName(e.target.value)}
                       className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow uppercase"
-                      required
+                      required={registrationCode !== 'whyedugram'}
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-bold text-[#4A4036] mb-1.5">No. Absen</label>
+                    <label className="block text-sm font-bold text-[#4A4036] mb-1.5">
+                      No. Absen {registrationCode === 'whyedugram' && <span className="text-[#A8A096] font-normal">(Opsional)</span>}
+                    </label>
                     <input
                       type="number"
                       placeholder="Contoh: 12"
@@ -318,7 +336,7 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
                       onChange={(e) => setStudentNumber(e.target.value)}
                       className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
                       min="1"
-                      required
+                      required={registrationCode !== 'whyedugram'}
                     />
                   </div>
                 </div>
@@ -371,26 +389,68 @@ const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) =>
 };
 
 // --- Profile Page Component ---
-const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }) => {
+const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, currentUser: UserProfile, onBack: () => void }) => {
   const [profileData, setProfileData] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editBio, setEditBio] = useState('');
+  const [isFollowing, setIsFollowing] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/users/${user.id}`)
+  const fetchProfile = () => {
+    fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`)
       .then(res => res.json())
       .then(data => {
         setProfileData(data);
+        setEditBio(data.bio || '');
+        setIsFollowing(data.isFollowing);
         setLoading(false);
       })
       .catch(err => {
         console.error(err);
         setLoading(false);
       });
-  }, [user.id]);
+  };
+
+  useEffect(() => {
+    fetchProfile();
+  }, [user.id, currentUser.id]);
+
+  const handleUpdateProfile = async () => {
+    try {
+      const res = await fetch(`/api/users/${user.id}/profile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bio: editBio })
+      });
+      if (res.ok) {
+        setIsEditing(false);
+        fetchProfile();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleFollow = async () => {
+    try {
+      const res = await fetch(`/api/users/${user.id}/follow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ followerId: currentUser.id })
+      });
+      if (res.ok) {
+        fetchProfile();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   if (loading) {
     return <div className="min-h-screen bg-[#F4F1EA] flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#8A9A5B]"></div></div>;
   }
+
+  const isOwnProfile = user.id === currentUser.id;
 
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans pb-20">
@@ -400,7 +460,7 @@ const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }
             <ArrowLeft className="w-5 h-5" />
             <span className="font-medium">Kembali</span>
           </button>
-          <div className="flex-1 text-center font-bold text-lg pr-10">Profil Saya</div>
+          <div className="flex-1 text-center font-bold text-lg pr-10">{isOwnProfile ? 'Profil Saya' : 'Profil Eco-Influencer'}</div>
         </div>
       </header>
 
@@ -421,10 +481,55 @@ const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }
           </div>
           
           <div className="pt-16 pb-8 px-6 text-center">
-            <h2 className="text-2xl font-bold mb-1">{profileData?.fullName}</h2>
+            <div className="flex justify-center items-center gap-2 mb-1">
+              <h2 className="text-2xl font-bold">{profileData?.fullName}</h2>
+              {isOwnProfile ? (
+                <button onClick={() => setIsEditing(!isEditing)} className="p-1 hover:bg-gray-100 rounded-full">
+                  <Sparkles className="w-4 h-4 text-[#8A9A5B]" />
+                </button>
+              ) : (
+                <button 
+                  onClick={handleFollow}
+                  className={`px-4 py-1 rounded-full text-xs font-bold transition-all ${isFollowing ? 'bg-[#E5E0D8] text-[#A8A096]' : 'bg-[#8A9A5B] text-white shadow-sm'}`}
+                >
+                  {isFollowing ? 'Mengikuti' : 'Ikuti'}
+                </button>
+              )}
+            </div>
             <p className="text-[#A8A096] font-medium mb-1">@{profileData?.username}</p>
-            <p className="text-sm text-[#8A9A5B] font-bold mb-6">{profileData?.schoolName}</p>
+            <p className="text-sm text-[#8A9A5B] font-bold mb-4">{profileData?.schoolName}</p>
+
+            {isEditing ? (
+              <div className="mb-6 px-4">
+                <textarea 
+                  value={editBio} 
+                  onChange={(e) => setEditBio(e.target.value)}
+                  className="w-full p-3 border rounded-xl text-sm focus:ring-2 focus:ring-[#8A9A5B] outline-none"
+                  placeholder="Tulis biografimu..."
+                  rows={3}
+                />
+                <div className="flex justify-center gap-2 mt-2">
+                  <button onClick={() => setIsEditing(false)} className="px-4 py-1.5 text-xs font-bold text-gray-500">Batal</button>
+                  <button onClick={handleUpdateProfile} className="px-4 py-1.5 text-xs font-bold bg-[#8A9A5B] text-white rounded-lg">Simpan</button>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-[#4A4036] mb-6 max-w-sm mx-auto italic">
+                {profileData?.bio || "Belum ada biografi. Ayo bagikan aksi nyatamu!"}
+              </p>
+            )}
             
+            <div className="flex justify-center gap-8 mb-8">
+              <div className="text-center">
+                <div className="text-xl font-bold text-[#4A4036]">{profileData?.followersCount || 0}</div>
+                <div className="text-xs font-bold text-[#A8A096] uppercase tracking-wider">Pengikut</div>
+              </div>
+              <div className="text-center">
+                <div className="text-xl font-bold text-[#4A4036]">{profileData?.followingCount || 0}</div>
+                <div className="text-xs font-bold text-[#A8A096] uppercase tracking-wider">Mengikuti</div>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-4 mb-8">
               <div className="bg-[#F4F1EA] p-4 rounded-2xl border border-[#E5E0D8]">
                 <div className="text-[#A8A096] text-xs font-bold uppercase tracking-wider mb-1">Kelas</div>
@@ -472,13 +577,6 @@ const ProfilePage = ({ user, onBack }: { user: UserProfile, onBack: () => void }
                 ON FIRE! 🔥
               </div>
             )}
-            
-            {(profileData?.interactions || 0) > 10 && (
-              <div className="mt-4 inline-flex items-center gap-2 bg-blue-50 text-blue-600 px-4 py-2 rounded-full border border-blue-100 font-medium text-sm">
-                <CheckCircle2 className="w-5 h-5" />
-                Verified Eco-Influencer
-              </div>
-            )}
           </div>
         </div>
       </main>
@@ -504,7 +602,29 @@ const AssignmentModal = ({
 
   if (!isOpen || !post) return null;
 
+  const addOption = () => {
+    if (options.length < 5) {
+      setOptions([...options, '']);
+    }
+  };
+
+  const removeOption = (index: number) => {
+    if (options.length > 2) {
+      const newOpts = options.filter((_, i) => i !== index);
+      setOptions(newOpts);
+    }
+  };
+
   const handleSubmit = async () => {
+    if (!question.trim()) {
+      alert('Pertanyaan harus diisi');
+      return;
+    }
+    if (type !== 'essay' && options.some(opt => !opt.trim())) {
+      alert('Semua opsi harus diisi');
+      return;
+    }
+
     try {
       const res = await fetch('/api/assignments', {
         method: 'POST',
@@ -522,24 +642,70 @@ const AssignmentModal = ({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl">
-        <h2 className="text-xl font-bold mb-4">Buat Tugas untuk Postingan</h2>
-        <select value={type} onChange={(e) => setType(e.target.value as any)} className="w-full p-2 mb-4 border rounded-lg">
+      <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-xl max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-4">
+          <h2 className="text-xl font-bold">Buat Tugas</h2>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 rounded-full">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+        
+        <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Tipe Tugas</label>
+        <select value={type} onChange={(e) => setType(e.target.value as any)} className="w-full p-3 mb-4 border border-[#E5E0D8] rounded-xl focus:ring-2 focus:ring-[#8A9A5B] outline-none">
           <option value="choice">Pilihan Ganda</option>
           <option value="essay">Essai</option>
           <option value="poll">Polling</option>
         </select>
-        <textarea placeholder="Pertanyaan..." value={question} onChange={(e) => setQuestion(e.target.value)} className="w-full p-2 mb-4 border rounded-lg h-24" />
-        {type !== 'essay' && options.map((opt, i) => (
-          <input key={i} placeholder={`Opsi ${i + 1}`} value={opt} onChange={(e) => {
-            const newOpts = [...options];
-            newOpts[i] = e.target.value;
-            setOptions(newOpts);
-          }} className="w-full p-2 mb-2 border rounded-lg" />
-        ))}
-        <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-gray-500">Batal</button>
-          <button onClick={handleSubmit} className="px-4 py-2 bg-[#8A9A5B] text-white rounded-lg">Buat Tugas</button>
+
+        <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Pertanyaan</label>
+        <textarea 
+          placeholder="Tulis pertanyaan di sini..." 
+          value={question} 
+          onChange={(e) => setQuestion(e.target.value)} 
+          className="w-full p-3 mb-4 border border-[#E5E0D8] rounded-xl h-24 focus:ring-2 focus:ring-[#8A9A5B] outline-none" 
+        />
+
+        {type !== 'essay' && (
+          <div className="space-y-3 mb-6">
+            <div className="flex justify-between items-center">
+              <label className="block text-sm font-bold text-[#4A4036]">Opsi Jawaban</label>
+              {options.length < 5 && (
+                <button 
+                  onClick={addOption}
+                  className="text-xs font-bold text-[#8A9A5B] flex items-center gap-1 hover:underline"
+                >
+                  <Plus className="w-3 h-3" /> Tambah Opsi
+                </button>
+              )}
+            </div>
+            {options.map((opt, i) => (
+              <div key={i} className="flex gap-2">
+                <input 
+                  placeholder={`Opsi ${i + 1}`} 
+                  value={opt} 
+                  onChange={(e) => {
+                    const newOpts = [...options];
+                    newOpts[i] = e.target.value;
+                    setOptions(newOpts);
+                  }} 
+                  className="flex-1 p-3 border border-[#E5E0D8] rounded-xl text-sm focus:ring-2 focus:ring-[#8A9A5B] outline-none" 
+                />
+                {options.length > 2 && (
+                  <button 
+                    onClick={() => removeOption(i)}
+                    className="p-2 text-red-400 hover:bg-red-50 rounded-xl transition-colors"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-3">
+          <button onClick={onClose} className="flex-1 py-3 text-sm font-bold text-gray-500 hover:bg-gray-50 rounded-xl transition-colors">Batal</button>
+          <button onClick={handleSubmit} className="flex-1 py-3 bg-[#8A9A5B] text-white text-sm font-bold rounded-xl shadow-md hover:bg-[#7A8A4B] transition-colors">Buat Tugas</button>
         </div>
       </div>
     </div>
@@ -768,6 +934,7 @@ export default function App() {
   const [view, setView] = useState<'feed' | 'profile' | 'students'>('feed');
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [selectedUserForProfile, setSelectedUserForProfile] = useState<UserProfile | null>(null);
   
   // Assignment Modal State
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -788,9 +955,10 @@ export default function App() {
 
   // Fetch data
   const fetchData = async () => {
+    if (!currentUser) return;
     try {
       const [postsRes, lbRes] = await Promise.all([
-        fetch('/api/posts'),
+        fetch(`/api/posts?userId=${currentUser.id}`),
         fetch('/api/leaderboard')
       ]);
       
@@ -875,19 +1043,33 @@ export default function App() {
   };
 
   const handleInteract = async (postId: string, type: 'insightful' | 'ask' | 'support') => {
+    if (!currentUser) return;
     try {
+      const post = posts.find(p => p.id === postId);
+      if (!post) return;
+
+      const hasInteracted = post.userInteractions.includes(type);
+
       // Optimistic update
-      setPosts(posts.map(post => {
-        if (post.id === postId) {
-          return { ...post, [type]: post[type] + 1 };
+      setPosts(posts.map(p => {
+        if (p.id === postId) {
+          const newInteractions = hasInteracted 
+            ? p.userInteractions.filter(i => i !== type)
+            : [...p.userInteractions, type];
+          
+          return { 
+            ...p, 
+            [type]: hasInteracted ? Math.max(0, p[type] - 1) : p[type] + 1,
+            userInteractions: newInteractions
+          };
         }
-        return post;
+        return p;
       }));
 
       await fetch(`/api/posts/${postId}/interact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type })
+        body: JSON.stringify({ type, userId: currentUser.id })
       });
       
       // Refresh leaderboard in background
@@ -907,7 +1089,7 @@ export default function App() {
   }
 
   if (view === 'profile') {
-    return <ProfilePage user={currentUser} onBack={() => setView('feed')} />;
+    return <ProfilePage user={selectedUserForProfile || currentUser} currentUser={currentUser} onBack={() => { setView('feed'); setSelectedUserForProfile(null); }} />;
   }
 
   if (view === 'students') {
@@ -1055,12 +1237,23 @@ export default function App() {
                     {/* Post Header */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold">
+                        <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold hover:opacity-80 transition-opacity cursor-pointer" onClick={() => {
+                          setSelectedUserForProfile({ id: post.authorId, fullName: post.authorName, className: post.authorClass } as any);
+                          setView('profile');
+                        }}>
                           {post.authorName.charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
-                            <span className="font-bold">{post.authorName}</span>
+                            <button 
+                              onClick={() => {
+                                setSelectedUserForProfile({ id: post.authorId, fullName: post.authorName, className: post.authorClass } as any);
+                                setView('profile');
+                              }}
+                              className="font-bold hover:underline"
+                            >
+                              {post.authorName}
+                            </button>
                             {/* Simple check for verified - in real app would come from DB */}
                             {(post.insightful + post.ask + post.support) > 10 && (
                               <CheckCircle2 className="w-4 h-4 text-blue-500" />
@@ -1110,32 +1303,32 @@ export default function App() {
                       <div className="flex items-center gap-6 mt-4 pt-4 border-t border-[#E5E0D8]">
                         <button 
                           onClick={() => handleInteract(post.id, 'insightful')}
-                          className="flex items-center gap-1.5 text-[#A8A096] hover:text-yellow-500 transition-colors group"
+                          className={`flex items-center gap-1.5 transition-colors group ${post.userInteractions.includes('insightful') ? 'text-yellow-600' : 'text-[#A8A096] hover:text-yellow-500'}`}
                         >
-                          <div className="p-1.5 rounded-full group-hover:bg-yellow-50 transition-colors">
-                            <Lightbulb className={`w-5 h-5 ${post.insightful > 0 ? 'text-yellow-500 fill-yellow-500/20' : ''}`} />
+                          <div className={`p-1.5 rounded-full transition-colors ${post.userInteractions.includes('insightful') ? 'bg-yellow-50' : 'group-hover:bg-yellow-50'}`}>
+                            <Lightbulb className={`w-5 h-5 ${post.userInteractions.includes('insightful') ? 'text-yellow-500 fill-yellow-500/20' : ''}`} />
                           </div>
-                          <span className={`text-sm font-medium ${post.insightful > 0 ? 'text-yellow-600' : ''}`}>{post.insightful}</span>
+                          <span className="text-sm font-medium">{post.insightful}</span>
                         </button>
                         
                         <button 
                           onClick={() => handleInteract(post.id, 'ask')}
-                          className="flex items-center gap-1.5 text-[#A8A096] hover:text-blue-500 transition-colors group"
+                          className={`flex items-center gap-1.5 transition-colors group ${post.userInteractions.includes('ask') ? 'text-blue-600' : 'text-[#A8A096] hover:text-blue-500'}`}
                         >
-                          <div className="p-1.5 rounded-full group-hover:bg-blue-50 transition-colors">
-                            <MessageCircleQuestion className={`w-5 h-5 ${post.ask > 0 ? 'text-blue-500 fill-blue-500/20' : ''}`} />
+                          <div className={`p-1.5 rounded-full transition-colors ${post.userInteractions.includes('ask') ? 'bg-blue-50' : 'group-hover:bg-blue-50'}`}>
+                            <MessageCircleQuestion className={`w-5 h-5 ${post.userInteractions.includes('ask') ? 'text-blue-500 fill-blue-500/20' : ''}`} />
                           </div>
-                          <span className={`text-sm font-medium ${post.ask > 0 ? 'text-blue-600' : ''}`}>{post.ask}</span>
+                          <span className="text-sm font-medium">{post.ask}</span>
                         </button>
                         
                         <button 
                           onClick={() => handleInteract(post.id, 'support')}
-                          className="flex items-center gap-1.5 text-[#A8A096] hover:text-red-500 transition-colors group"
+                          className={`flex items-center gap-1.5 transition-colors group ${post.userInteractions.includes('support') ? 'text-red-600' : 'text-[#A8A096] hover:text-red-500'}`}
                         >
-                          <div className="p-1.5 rounded-full group-hover:bg-red-50 transition-colors">
-                            <Heart className={`w-5 h-5 ${post.support > 0 ? 'text-red-500 fill-red-500/20' : ''}`} />
+                          <div className={`p-1.5 rounded-full transition-colors ${post.userInteractions.includes('support') ? 'bg-red-50' : 'group-hover:bg-red-50'}`}>
+                            <Heart className={`w-5 h-5 ${post.userInteractions.includes('support') ? 'text-red-500 fill-red-500/20' : ''}`} />
                           </div>
-                          <span className={`text-sm font-medium ${post.support > 0 ? 'text-red-600' : ''}`}>{post.support}</span>
+                          <span className="text-sm font-medium">{post.support}</span>
                         </button>
 
                         <button 
@@ -1195,7 +1388,14 @@ export default function App() {
             ) : (
               <div className="space-y-3">
                 {leaderboard.map((user, index) => (
-                  <div key={user.id} className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F4F1EA] transition-colors border border-transparent hover:border-[#E5E0D8]">
+                  <div 
+                    key={user.id} 
+                    onClick={() => {
+                      setSelectedUserForProfile({ id: user.id, fullName: user.name, className: user.className } as any);
+                      setView('profile');
+                    }}
+                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F4F1EA] transition-colors border border-transparent hover:border-[#E5E0D8] cursor-pointer"
+                  >
                     <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0
                       ${index === 0 ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' : 
                         index === 1 ? 'bg-slate-100 text-slate-700 border border-slate-200' : 
