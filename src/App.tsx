@@ -6,12 +6,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 
 // Fix Leaflet default icon issue
-import 'leaflet/dist/leaflet.css';
 // @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -201,11 +200,16 @@ const BangEko = () => {
     </div>
   );
 };
-const ChangeView = ({ center, zoom }: { center: [number, number], zoom: number }) => {
+const ChangeView = ({ center }: { center: [number, number] }) => {
   const map = useMap();
   useEffect(() => {
-    map.setView(center, zoom);
-  }, [center, zoom, map]);
+    if (center[0] !== -6.2 || center[1] !== 106.8) {
+      map.flyTo(center, 13, {
+        animate: true,
+        duration: 1.5
+      });
+    }
+  }, [center[0], center[1], map]);
   return null;
 };
 
@@ -243,7 +247,7 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom={false}
         >
-          <ChangeView center={center} zoom={11} />
+          <ChangeView center={center} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
