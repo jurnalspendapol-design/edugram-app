@@ -535,31 +535,44 @@ app.post("/api/posts", async (req, res) => {
     const id = Date.now().toString();
     const createdAt = new Date().toISOString();
 
-    const { error } = await supabase
+    const insertData: any = {
+      id,
+      author_id: authorId,
+      subbab,
+      caption,
+      image_url: imageUrl || "",
+      is_scientific: isScientific,
+      created_at: createdAt,
+      insightful: 0,
+      ask: 0,
+      support: 0
+    };
+
+    if (locationLat !== null && locationLat !== undefined) {
+      insertData.location_lat = locationLat;
+      insertData.location_lng = locationLng;
+    }
+
+    let { error } = await supabase
       .from('posts')
-      .insert([
-        {
-          id,
-          author_id: authorId,
-          subbab,
-          caption,
-          image_url: imageUrl || "",
-          is_scientific: isScientific,
-          created_at: createdAt,
-          insightful: 0,
-          ask: 0,
-          support: 0,
-          location_lat: locationLat,
-          location_lng: locationLng
-        }
-      ]);
+      .insert([insertData]);
+
+    // Fallback if location columns are missing in DB
+    if (error && (error.message.includes('location_lat') || error.code === '42703')) {
+      console.warn("Location columns missing, retrying without location data...");
+      delete insertData.location_lat;
+      delete insertData.location_lng;
+      
+      const retry = await supabase.from('posts').insert([insertData]);
+      error = retry.error;
+    }
 
     if (error) {
       console.error("Post creation error details:", error);
       return res.status(500).json({ 
         error: "Gagal membuat postingan: " + error.message,
         details: error.details,
-        hint: "Pastikan tabel 'posts' memiliki kolom 'created_at' dengan tipe TIMESTAMPTZ. Jalankan SQL perbaikan jika perlu."
+        hint: "Jika error terkait 'location_lat', jalankan SQL ini di Supabase: ALTER TABLE posts ADD COLUMN location_lat FLOAT8; ALTER TABLE posts ADD COLUMN location_lng FLOAT8;"
       });
     }
 
