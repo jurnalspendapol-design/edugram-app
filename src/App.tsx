@@ -1671,27 +1671,27 @@ const TutorialModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => vo
   const steps = [
     {
       title: "Selamat Datang di EduGram! 🌿",
-      content: "EduGram adalah platform sosial media khusus untuk kamu para Eco-Influencer sekolah. Di sini kita berbagi aksi nyata menjaga bumi.",
+      content: "EduGram adalah media sosial khusus untuk kamu para Eco-Influencer sekolah. Di sini kita berbagi aksi nyata menjaga bumi dengan cara yang seru!",
       icon: <Leaf className="w-12 h-12 text-[#8A9A5B]" />
     },
     {
-      title: "Berbagi Aksi Nyata 📸",
-      content: "Posting kegiatan ramah lingkunganmu. Gunakan kata ilmiah seperti 'Emisi', 'Limbah', atau 'Biogas' untuk mendapatkan bonus +5 XP!",
+      title: "Langkah 1: Buat Postingan 📸",
+      content: "Klik tombol '+' di bagian bawah layar untuk membagikan foto kegiatan ramah lingkunganmu. Jangan lupa pilih kategori yang sesuai!",
       icon: <ImageIcon className="w-12 h-12 text-[#D2B48C]" />
     },
     {
-      title: "Interaksi Edukatif 💡",
-      content: "Gunakan tombol Insightful (💡), Ask (❓), atau Support (❤️). Setiap interaksi yang kamu berikan atau terima akan menambah XP-mu!",
+      title: "Langkah 2: Dapatkan Poin (XP) 🌟",
+      content: "Tulis caption menggunakan kata ilmiah (seperti 'Emisi', 'Limbah', atau 'Biogas') untuk mendapat bonus +5 XP. Kumpulkan XP sebanyak-banyaknya!",
       icon: <Sparkles className="w-12 h-12 text-yellow-500" />
     },
     {
-      title: "Berdiskusi & Belajar 💬",
-      content: "Gunakan fitur komentar untuk berdiskusi lebih dalam dengan teman-temanmu. Setiap komentar memberimu +2 XP!",
+      title: "Langkah 3: Berinteraksi 💬",
+      content: "Berikan reaksi (💡 Insightful, ❓ Ask, ❤️ Support) dan komentar pada postingan temanmu. Setiap interaksi juga akan memberimu tambahan XP!",
       icon: <MessageSquare className="w-12 h-12 text-blue-500" />
     },
     {
-      title: "Misi Harian & Leaderboard 🏆",
-      content: "Selesaikan 'Misi Hari Ini' dan kumpulkan XP untuk menjadi Top Eco-Influencer di sekolahmu!",
+      title: "Langkah 4: Jadilah Juara! 🏆",
+      content: "Selesaikan 'Misi Hari Ini' dan kumpulkan XP untuk naik level. Jadilah Top Eco-Influencer di sekolahmu pada menu Leaderboard!",
       icon: <Trophy className="w-12 h-12 text-orange-500" />
     }
   ];
@@ -2093,6 +2093,15 @@ export default function App() {
         xpGained={receiptData.xp} 
         postTitle={receiptData.title} 
       />
+      {/* Floating Tutorial Button */}
+      <button
+        onClick={() => setIsTutorialOpen(true)}
+        className="fixed bottom-6 left-6 z-[90] flex items-center gap-2 bg-white text-[#8A9A5B] px-4 py-3 rounded-full shadow-xl border-2 border-[#8A9A5B] hover:bg-[#8A9A5B] hover:text-white transition-all group hover:scale-105"
+      >
+        <MessageCircleQuestion className="w-6 h-6" />
+        <span className="font-bold text-sm hidden sm:block group-hover:block">Cara Pakai EduGram</span>
+      </button>
+
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
