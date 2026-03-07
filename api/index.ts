@@ -195,7 +195,7 @@ app.get("/api/users/:id", async (req, res) => {
     
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, username, full_name, class_name, student_number')
+      .select('id, username, full_name, class_name, student_number, xp')
       .eq('id', req.params.id)
       .single();
 
@@ -203,14 +203,33 @@ app.get("/api/users/:id", async (req, res) => {
       return res.status(404).json({ error: "User tidak ditemukan" });
     }
 
-    const { data: posts } = await supabase
+    const { data: userPosts } = await supabase
       .from('posts')
-      .select('insightful, ask, support')
+      .select('insightful, ask, support, is_scientific')
       .eq('author_id', user.id);
       
+    const { data: userComments } = await supabase
+      .from('comments')
+      .select('id')
+      .eq('author_id', user.id);
+
     let totalInteractions = 0;
-    if (posts) {
-      totalInteractions = posts.reduce((acc, post) => acc + post.insightful + post.ask + post.support, 0);
+    let calculatedXp = 0;
+    if (userPosts) {
+      totalInteractions = userPosts.reduce((acc, post) => acc + post.insightful + post.ask + post.support, 0);
+      calculatedXp = (userPosts.length * 10) + 
+                     (userPosts.filter(p => p.is_scientific).length * 5) + 
+                     (totalInteractions * 2);
+    }
+    if (userComments) {
+      calculatedXp += (userComments.length * 2);
+    }
+
+    const finalXp = Math.max((user as any).xp || 0, calculatedXp);
+
+    // Sync XP to database if it's higher
+    if (finalXp > ((user as any).xp || 0)) {
+      supabase.from('users').update({ xp: finalXp }).eq('id', user.id).then();
     }
 
     const { streak, lastPostDate } = await getUserStreakInfo(user.id, supabase);
@@ -257,7 +276,7 @@ app.get("/api/users/:id", async (req, res) => {
       interactions: totalInteractions,
       streak,
       lastPostDate,
-      xp: (user as any).xp || 0,
+      xp: finalXp,
       role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
       followersCount,
       followingCount,
@@ -459,7 +478,8 @@ app.post("/api/posts/:postId/comments", async (req, res) => {
     // Add XP to commenter
     const { data: user } = await supabase.from('users').select('xp').eq('id', authorId).single();
     if (user) {
-      await supabase.from('users').update({ xp: (user as any).xp + 2 }).eq('id', authorId);
+      const currentXp = (user as any).xp || 0;
+      await supabase.from('users').update({ xp: currentXp + 2 }).eq('id', authorId);
     }
 
     res.json({ success: true, id });
@@ -543,14 +563,15 @@ app.post("/api/posts", async (req, res) => {
     let xpGained = 10;
     if (isScientific) xpGained += 5;
     
-    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number').eq('id', authorId).single();
+    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, xp').eq('id', authorId).single();
     
     let updatedUser = null;
     if (user) {
       // Try to update XP, but don't fail if column missing
       try {
+        const currentXp = (user as any).xp || 0;
         await supabase.from('users').update({ 
-          xp: (user as any).xp + xpGained
+          xp: currentXp + xpGained
         }).eq('id', authorId);
       } catch (e) {
         console.log("XP update failed, likely column missing");
@@ -741,29 +762,48 @@ app.post("/api/posts/:id/interact", async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name') as { data: any[], error: any };
-    const { data: posts, error: postsError } = await supabase.from('posts').select('author_id, insightful, ask, support') as { data: any[], error: any };
+    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name, xp') as { data: any[], error: any };
+    const { data: posts, error: postsError } = await supabase.from('posts').select('author_id, insightful, ask, support, is_scientific') as { data: any[], error: any };
+    const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id') as { data: any[], error: any };
 
-    if (usersError || postsError) {
+    if (usersError || postsError || commentsError) {
       return res.status(500).json({ error: "Gagal mengambil leaderboard" });
     }
 
     const userStats = users.map(u => {
       const userPosts = posts.filter(p => p.author_id === u.id);
-      const interactions = userPosts.reduce((acc, p) => acc + p.insightful + p.ask + p.support, 0);
+      const userComments = comments.filter(c => c.author_id === u.id);
+      
+      const interactionsReceived = userPosts.reduce((acc, p) => acc + p.insightful + p.ask + p.support, 0);
+      
+      // Calculate XP based on activity to ensure accuracy for users like "deddy armanda"
+      // Post: 10, Scientific: +5, Comment: 2, Interaction Received: 2
+      const calculatedXp = (userPosts.length * 10) + 
+                           (userPosts.filter(p => p.is_scientific).length * 5) + 
+                           (userComments.length * 2) + 
+                           (interactionsReceived * 2);
+      
+      // Use the higher value between stored XP and calculated XP
+      const finalXp = Math.max((u as any).xp || 0, calculatedXp);
+
+      // Sync XP to database if it's higher
+      if (finalXp > ((u as any).xp || 0)) {
+        supabase.from('users').update({ xp: finalXp }).eq('id', u.id).then();
+      }
+
       return {
         id: u.id,
         username: u.username,
         name: u.full_name,
         className: u.class_name,
         schoolName: (u as any).school_name || "",
-        xp: (u as any).xp || 0,
-        interactions
+        xp: finalXp,
+        interactions: interactionsReceived
       };
     });
 
     const leaderboard = userStats
-      .sort((a, b) => b.interactions - a.interactions || b.xp - a.xp)
+      .sort((a, b) => b.xp - a.xp || b.interactions - a.interactions)
       .slice(0, 3);
 
     res.json(leaderboard);
