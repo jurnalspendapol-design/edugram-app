@@ -405,6 +405,8 @@ app.get("/api/posts", async (req, res) => {
         support: p.support,
         timestamp: p.created_at,
         isScientific: Boolean(p.is_scientific),
+        locationLat: (p as any).location_lat,
+        locationLng: (p as any).location_lng,
         commentCount: count,
         userInteractions: interactions
       };
@@ -524,7 +526,7 @@ app.post("/api/posts/:postId/report", async (req, res) => {
 app.post("/api/posts", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { authorId, subbab, caption, imageUrl, isScientific } = req.body;
+    const { authorId, subbab, caption, imageUrl, isScientific, locationLat, locationLng } = req.body;
     
     if (!authorId || !caption) {
       return res.status(400).json({ error: "Data tidak lengkap" });
@@ -546,7 +548,9 @@ app.post("/api/posts", async (req, res) => {
           created_at: createdAt,
           insightful: 0,
           ask: 0,
-          support: 0
+          support: 0,
+          location_lat: locationLat,
+          location_lng: locationLng
         }
       ]);
 

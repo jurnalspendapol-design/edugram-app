@@ -3,9 +3,40 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+
+// Fix Leaflet default icon issue
+import 'leaflet/dist/leaflet.css';
+// @ts-ignore
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+});
+
+// Custom markers
+const redIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+
+const greenIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
 
 type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
 
@@ -45,6 +76,8 @@ interface Post {
   isScientific: boolean;
   commentCount: number;
   userInteractions: string[];
+  locationLat?: number;
+  locationLng?: number;
   assignments?: any[];
 }
 
@@ -167,6 +200,70 @@ const BangEko = () => {
     </div>
   );
 };
+const EcoMap = ({ posts }: { posts: Post[] }) => {
+  const mapPosts = posts.filter(p => p.locationLat && p.locationLng);
+  
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden mb-6">
+      <div className="p-4 border-b border-[#E5E0D8] flex items-center justify-between">
+        <h2 className="font-bold text-lg flex items-center gap-2">
+          <MapIcon className="w-5 h-5 text-[#8A9A5B]" />
+          Interactive Eco-Map
+        </h2>
+        <div className="flex gap-4 text-[10px] font-bold uppercase tracking-wider">
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-red-500"></div>
+            <span>Limbah/Polusi</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="w-2 h-2 rounded-full bg-green-500"></div>
+            <span>Solusi/Tanam</span>
+          </div>
+        </div>
+      </div>
+      <div id="map" className="h-[350px] w-full z-0">
+        <MapContainer 
+          center={[-6.2, 106.8]} 
+          zoom={11} 
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={false}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          />
+          {mapPosts.map(post => {
+            const captionLower = post.caption.toLowerCase();
+            const isIssue = captionLower.includes('limbah') || captionLower.includes('polusi');
+            const isSolution = captionLower.includes('solusi') || captionLower.includes('tanam');
+            
+            let icon = new L.Icon.Default();
+            if (isIssue) icon = redIcon;
+            else if (isSolution) icon = greenIcon;
+
+            return (
+              <Marker 
+                key={post.id} 
+                position={[post.locationLat!, post.locationLng!]} 
+                icon={icon}
+              >
+                <Popup>
+                  <div className="p-1 max-w-[200px]">
+                    <div className="font-bold text-[#8A9A5B]">@{post.authorUsername || 'User'}</div>
+                    <div className="text-xs text-[#4A4036] mt-1">
+                      {post.caption.substring(0, 80)}{post.caption.length > 80 ? '...' : ''}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
+        </MapContainer>
+      </div>
+    </div>
+  );
+};
+
 const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => {
   const [isLogin, setIsLogin] = useState(true);
   
@@ -1079,6 +1176,7 @@ export default function App() {
   const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
+  const [isLocationEnabled, setIsLocationEnabled] = useState(false);
 
   // Load user from localStorage
   useEffect(() => {
@@ -1212,7 +1310,9 @@ export default function App() {
           subbab,
           caption,
           imageUrl,
-          isScientific
+          isScientific,
+          locationLat: isLocationEnabled ? -6.2 + (Math.random() * 0.1) : null, // Random around Jakarta for demo
+          locationLng: isLocationEnabled ? 106.8 + (Math.random() * 0.1) : null
         })
       });
 
@@ -1224,6 +1324,7 @@ export default function App() {
         }
         setCaption('');
         setImageUrl('');
+        setIsLocationEnabled(false);
         fetchData(); // Refresh feed
       } else {
         const data = await res.json();
@@ -1396,18 +1497,31 @@ export default function App() {
                   <div className="text-xs text-[#A8A096] flex-1">
                     <span className="font-bold text-[#8A9A5B]">Tips:</span> Gunakan kata "Emisi", "Gas Rumah Kaca", "Limbah", atau "Biogas" untuk badge spesial!
                   </div>
-                  <button
-                    type="submit"
-                    disabled={!caption.trim()}
-                    className="w-full sm:w-auto bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white px-6 py-2.5 rounded-full font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
-                  >
-                    <span>Posting</span>
-                    <Send className="w-4 h-4" />
-                  </button>
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <button
+                      type="button"
+                      onClick={() => setIsLocationEnabled(!isLocationEnabled)}
+                      className={`p-2 rounded-full transition-all ${isLocationEnabled ? 'bg-[#8A9A5B] text-white shadow-md' : 'bg-[#F4F1EA] text-[#A8A096] border border-[#E5E0D8]'}`}
+                      title={isLocationEnabled ? "Lokasi Aktif" : "Aktifkan Lokasi"}
+                    >
+                      <MapPin className="w-5 h-5" />
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={!caption.trim()}
+                      className="flex-1 sm:flex-none bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white px-6 py-2.5 rounded-full font-bold flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                    >
+                      <span>Posting</span>
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </form>
           </div>
+
+          {/* Interactive Eco-Map */}
+          <EcoMap posts={posts} />
 
           {/* Feed */}
           <div className="space-y-6">
