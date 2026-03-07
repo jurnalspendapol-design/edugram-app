@@ -1104,7 +1104,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
             )}
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 };
@@ -1361,7 +1361,7 @@ const ReportModal = ({
 };
 
 // --- Students View Component ---
-const StudentsView = ({ schoolName, teacherId }: { schoolName: string, teacherId: string }) => {
+const StudentsView = ({ schoolName, teacherId, onBack }: { schoolName: string, teacherId: string, onBack: () => void }) => {
   const [students, setStudents] = useState<any[]>([]);
 
   useEffect(() => {
@@ -1381,17 +1381,46 @@ const StudentsView = ({ schoolName, teacherId }: { schoolName: string, teacherId
   };
 
   return (
-    <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8]">
-      <h2 className="text-xl font-bold mb-4">Manajemen Siswa</h2>
-      {students.map(s => (
-        <div key={s.id} className="flex justify-between items-center p-4 border-b">
-          <div>
-            <div className="font-bold">{s.full_name}</div>
-            <div className="text-sm text-gray-500">{s.class_name} - Absen {s.student_number}</div>
-          </div>
-          <button onClick={() => deleteStudent(s.id)} className="text-red-500 font-bold">Hapus</button>
+    <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans pb-20">
+      <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center">
+          <button onClick={onBack} className="flex items-center gap-2 hover:bg-[#7A8A4B] px-3 py-1.5 rounded-full transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+            <span className="font-medium">Kembali</span>
+          </button>
+          <div className="flex-1 text-center font-bold text-lg pr-10">Manajemen Siswa</div>
         </div>
-      ))}
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8] shadow-sm">
+          <h2 className="text-xl font-bold mb-4">Daftar Siswa - {schoolName}</h2>
+          {students.length === 0 ? (
+            <p className="text-center text-gray-500 py-8">Belum ada siswa yang terdaftar.</p>
+          ) : (
+            <div className="space-y-3">
+              {students.map(s => (
+                <div key={s.id} className="flex justify-between items-center p-4 border rounded-xl hover:bg-gray-50 transition-colors">
+                  <div>
+                    <div className="font-bold text-lg">{s.full_name}</div>
+                    <div className="text-sm text-gray-500 flex items-center gap-2 mt-1">
+                      <span className="bg-[#E5E0D8] px-2 py-0.5 rounded text-xs font-bold text-[#4A4036]">{s.class_name}</span>
+                      <span>Absen: {s.student_number}</span>
+                    </div>
+                  </div>
+                  <button 
+                    onClick={() => deleteStudent(s.id)} 
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                    title="Hapus Siswa"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </main>
     </div>
   );
 };
@@ -1892,7 +1921,7 @@ export default function App() {
   }
 
   if (view === 'students') {
-    return <StudentsView schoolName={currentUser.schoolName} teacherId={currentUser.id} />;
+    return <StudentsView schoolName={currentUser.schoolName} teacherId={currentUser.id} onBack={() => setView('feed')} />;
   }
 
   return (
@@ -2413,6 +2442,7 @@ export default function App() {
             </div>
           </div>
         </div>
+      </div>
 
         {/* Edit Post Modal */}
         {editingPost && (
