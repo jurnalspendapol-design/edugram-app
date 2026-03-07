@@ -213,6 +213,9 @@ const ChangeView = ({ center }: { center: [number, number] }) => {
   return null;
 };
 
+const ISSUE_KEYWORDS = ['limbah', 'polusi', 'sampah', 'kotor', 'asap', 'emisi', 'rusak', 'cemar', 'banjir', 'kekeringan', 'penebangan', 'kebakaran', 'plastik', 'oli', 'racun'];
+const SOLUTION_KEYWORDS = ['solusi', 'tanam', 'pohon', 'daur ulang', 'hemat', 'bersih', 'hijau', 'surya', 'kompos', 'organik', 'sepeda', 'jalan', 'tumbler', 'bibit', 'pupuk', 'biogas', 'manggrove'];
+
 const EcoMap = ({ posts }: { posts: Post[] }) => {
   const mapPosts = posts.filter(p => p.locationLat != null && p.locationLng != null);
   
@@ -224,23 +227,23 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden mb-6">
-      <div className="p-4 border-b border-[#E5E0D8] flex items-center justify-between">
-        <h2 className="font-bold text-lg flex items-center gap-2">
-          <MapIcon className="w-5 h-5 text-[#8A9A5B]" />
-          Interactive Eco-Map
+      <div className="p-3 border-b border-[#E5E0D8] flex items-center justify-between bg-[#FDFCFB]">
+        <h2 className="font-bold text-sm flex items-center gap-2 text-[#4A4036]">
+          <MapIcon className="w-4 h-4 text-[#8A9A5B]" />
+          Eco-Map Explorer
         </h2>
-        <div className="flex gap-4 text-[10px] font-bold uppercase tracking-wider">
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-red-500"></div>
-            <span>Limbah/Polusi</span>
+        <div className="flex gap-3 text-[9px] font-bold uppercase tracking-wider">
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
+            <span>Masalah</span>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="w-2 h-2 rounded-full bg-green-500"></div>
-            <span>Solusi/Tanam</span>
+          <div className="flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+            <span>Solusi</span>
           </div>
         </div>
       </div>
-      <div id="map" className="h-[350px] w-full z-0">
+      <div id="map" className="h-[200px] w-full z-0">
         <MapContainer 
           center={center} 
           zoom={11} 
@@ -254,8 +257,8 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
           />
           {mapPosts.map(post => {
             const captionLower = post.caption.toLowerCase();
-            const isIssue = captionLower.includes('limbah') || captionLower.includes('polusi');
-            const isSolution = captionLower.includes('solusi') || captionLower.includes('tanam');
+            const isIssue = ISSUE_KEYWORDS.some(k => captionLower.includes(k));
+            const isSolution = SOLUTION_KEYWORDS.some(k => captionLower.includes(k));
             
             let icon = new L.Icon.Default();
             if (isIssue) icon = redIcon;
@@ -269,8 +272,8 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
               >
                 <Popup>
                   <div className="p-1 max-w-[200px]">
-                    <div className="font-bold text-[#8A9A5B]">@{post.authorUsername || 'User'}</div>
-                    <div className="text-xs text-[#4A4036] mt-1">
+                    <div className="font-bold text-[#8A9A5B] text-xs">@{post.authorUsername || 'User'}</div>
+                    <div className="text-[10px] text-[#4A4036] mt-1 leading-tight">
                       {post.caption.substring(0, 80)}{post.caption.length > 80 ? '...' : ''}
                     </div>
                   </div>
@@ -1567,11 +1570,8 @@ export default function App() {
             </form>
           </div>
 
-          {/* Interactive Eco-Map */}
-          <EcoMap posts={posts} />
-
           {/* Feed */}
-          <div className="space-y-6">
+          <div className="space-y-6 mb-6">
             {posts.length === 0 ? (
               <div className="text-center py-16 bg-white rounded-2xl border border-[#E5E0D8] border-dashed">
                 <Leaf className="w-12 h-12 mx-auto mb-4 text-[#E5E0D8]" />
@@ -1772,6 +1772,9 @@ export default function App() {
               ))
             )}
           </div>
+
+          {/* Interactive Eco-Map - Compact Bar */}
+          <EcoMap posts={posts} />
         </div>
 
         {/* Right Column: Leaderboard */}
