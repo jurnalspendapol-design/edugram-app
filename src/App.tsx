@@ -11,6 +11,15 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 
+export const updateEcoHealth = (userId: string, amount: number) => {
+  const storedHealth = localStorage.getItem(`eco_health_${userId}`);
+  let currentHealth = storedHealth ? parseInt(storedHealth) : 100;
+  currentHealth = Math.min(100, currentHealth + amount);
+  localStorage.setItem(`eco_health_${userId}`, currentHealth.toString());
+  localStorage.setItem(`eco_health_update_${userId}`, Date.now().toString());
+  window.dispatchEvent(new Event('eco_health_updated'));
+};
+
 // Fix Leaflet default icon issue
 // @ts-ignore
 delete L.Icon.Default.prototype._getIconUrl;
@@ -920,6 +929,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   const [isEditing, setIsEditing] = useState(false);
   const [editBio, setEditBio] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
+  const [health, setHealth] = useState(100);
 
   const fetchProfile = () => {
     fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`)
@@ -939,6 +949,30 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   useEffect(() => {
     fetchProfile();
   }, [user.id, currentUser.id]);
+
+  useEffect(() => {
+    const calculateHealth = () => {
+      const storedHealth = localStorage.getItem(`eco_health_${user.id}`);
+      const lastUpdate = localStorage.getItem(`eco_health_update_${user.id}`);
+      
+      let currentHealth = storedHealth ? parseInt(storedHealth) : 100;
+      
+      if (lastUpdate) {
+        const hoursPassed = (Date.now() - parseInt(lastUpdate)) / (1000 * 60 * 60);
+        currentHealth = Math.max(0, currentHealth - Math.floor(hoursPassed * 2));
+      }
+      
+      setHealth(currentHealth);
+      localStorage.setItem(`eco_health_${user.id}`, currentHealth.toString());
+      localStorage.setItem(`eco_health_update_${user.id}`, Date.now().toString());
+    };
+
+    calculateHealth();
+    
+    const handleHealthUpdate = () => calculateHealth();
+    window.addEventListener('eco_health_updated', handleHealthUpdate);
+    return () => window.removeEventListener('eco_health_updated', handleHealthUpdate);
+  }, [user.id]);
 
   const handleUpdateProfile = async () => {
     try {
@@ -992,15 +1026,55 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
       <main className="max-w-2xl mx-auto px-4 py-8">
         <div className="bg-white rounded-3xl shadow-sm border border-[#E5E0D8] overflow-hidden">
           <div className="h-32 bg-gradient-to-r from-[#8A9A5B] to-[#D2B48C] relative">
-            <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2">
-              <div className="w-24 h-24 rounded-full bg-white p-1 shadow-md">
+            <div className="absolute -bottom-12 left-1/2 transform -translate-x-1/2 flex items-end gap-4">
+              <div className="w-24 h-24 rounded-full bg-white p-1 shadow-md relative z-10">
                 {profileData?.profilePictureUrl ? (
-                  <img src={profileData.profilePictureUrl} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+                  <img 
+                    src={profileData.profilePictureUrl} 
+                    alt="Profile" 
+                    className={`w-full h-full rounded-full object-cover transition-all duration-500 ${health < 30 ? 'grayscale' : ''}`} 
+                    referrerPolicy="no-referrer" 
+                  />
                 ) : (
-                  <div className="w-full h-full rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-3xl font-bold">
+                  <div className={`w-full h-full rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-3xl font-bold transition-all duration-500 ${health < 30 ? 'grayscale' : ''}`}>
                     {profileData?.fullName?.charAt(0).toUpperCase() || '?'}
                   </div>
                 )}
+              </div>
+              
+              {/* Eco-Guardian Avatar */}
+              <div className="relative group cursor-pointer mb-2">
+                <div className="w-16 h-16 rounded-full bg-white p-1 shadow-lg border-2 border-[#8A9A5B] relative z-20 hover:scale-110 transition-transform">
+                  <img 
+                    src={`https://api.dicebear.com/9.x/fun-emoji/svg?seed=${user.id}`} 
+                    alt="Eco-Guardian Avatar" 
+                    className={`w-full h-full rounded-full object-cover ${health < 30 ? 'grayscale opacity-80' : ''}`}
+                  />
+                  {health > 80 && (
+                    <div className="absolute -top-2 -right-2 bg-green-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-bounce">
+                      Happy!
+                    </div>
+                  )}
+                  {health < 30 && (
+                    <div className="absolute -top-2 -right-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                      Help!
+                    </div>
+                  )}
+                </div>
+                
+                {/* Health Bar Tooltip */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-white p-3 rounded-xl shadow-xl border border-[#E5E0D8] opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-30">
+                  <div className="text-xs font-bold text-center mb-1 text-[#4A4036]">Eco-Guardian Health</div>
+                  <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden mb-1">
+                    <div 
+                      className={`h-full transition-all duration-500 ${health > 80 ? 'bg-green-500' : health > 30 ? 'bg-yellow-500' : 'bg-red-500'}`} 
+                      style={{ width: `${health}%` }}
+                    ></div>
+                  </div>
+                  <div className="text-[10px] text-center text-[#A8A096]">
+                    {health > 80 ? 'Happy & Healthy 🌿' : health > 30 ? 'Needs Attention 🌱' : 'Endangered! 🥀'}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1521,6 +1595,66 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
   );
 };
 
+// --- Carbon Receipt Modal Component ---
+const CarbonReceiptModal = ({ isOpen, onClose, xpGained, postTitle }: { isOpen: boolean, onClose: () => void, xpGained: number, postTitle: string }) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+      <div className="bg-[#F4F1EA] rounded-md w-full max-w-sm overflow-hidden shadow-2xl animate-in slide-in-from-bottom-10 duration-500 font-mono relative">
+        {/* Receipt jagged top */}
+        <div className="h-4 w-full bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PHBvbHlnb24gcG9pbnRzPSIwLDEwIDUsMCAxMCwxMCIgZmlsbD0iI0Y0RjFFQSIvPjwvc3ZnPg==')] absolute top-0 left-0 transform -translate-y-full"></div>
+        
+        <div className="p-6 border-2 border-dashed border-[#A8A096] m-4 relative">
+          <div className="text-center mb-6">
+            <Leaf className="w-8 h-8 text-[#8A9A5B] mx-auto mb-2" />
+            <h2 className="text-xl font-bold text-[#4A4036] uppercase tracking-widest">Carbon Receipt</h2>
+            <p className="text-xs text-[#A8A096]">EduGram Eco-Action</p>
+            <p className="text-xs text-[#A8A096]">{new Date().toLocaleString()}</p>
+          </div>
+          
+          <div className="border-t border-b border-dashed border-[#A8A096] py-4 mb-4 space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-[#4A4036]">Item:</span>
+              <span className="font-bold text-[#4A4036] text-right truncate max-w-[150px]">{postTitle || 'Solusi Lingkungan'}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-[#4A4036]">Carbon Saved:</span>
+              <span className="font-bold text-green-600">~2.5 kg CO2</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-[#4A4036]">XP Earned:</span>
+              <span className="font-bold text-[#8A9A5B]">+{xpGained} XP</span>
+            </div>
+          </div>
+          
+          <div className="text-center space-y-4">
+            <p className="text-xs text-[#A8A096] italic">"Setiap aksi kecilmu menyelamatkan bumi."</p>
+            
+            {/* Barcode placeholder */}
+            <div className="h-12 w-full flex justify-center items-center gap-1 opacity-50">
+              {[...Array(20)].map((_, i) => (
+                <div key={i} className={`bg-[#4A4036] h-full ${Math.random() > 0.5 ? 'w-1' : 'w-2'}`}></div>
+              ))}
+            </div>
+            <p className="text-[10px] tracking-[0.3em] text-[#4A4036]">ECO-WARRIOR-001</p>
+            
+            <button 
+              onClick={onClose}
+              className="w-full mt-4 bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white font-bold py-2 px-4 rounded transition-colors uppercase tracking-wider text-sm"
+            >
+              Simpan Struk
+            </button>
+          </div>
+        </div>
+        
+        {/* Receipt jagged bottom */}
+        <div className="h-4 w-full bg-[url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PHBvbHlnb24gcG9pbnRzPSIwLDAgNSwxMCAxMCwwIiBmaWxsPSIjRjRGMUVBIi8+PC9zdmc+')] absolute bottom-0 left-0 transform translate-y-full"></div>
+      </div>
+    </div>
+  );
+};
+
 // --- Tutorial Modal Component ---
 const TutorialModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
   const [step, setStep] = useState(0);
@@ -1629,6 +1763,9 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedPostForReport, setSelectedPostForReport] = useState<Post | null>(null);
   
+  // Carbon Receipt State
+  const [receiptData, setReceiptData] = useState<{isOpen: boolean, xp: number, title: string}>({isOpen: false, xp: 0, title: ''});
+
   // Eco-Arcade State
   const [isArcadeOpen, setIsArcadeOpen] = useState(false);
   const [activeGameLevel, setActiveGameLevel] = useState(1);
@@ -1707,6 +1844,9 @@ export default function App() {
 
           setCurrentUser(data.user);
           localStorage.setItem('edugram_user_profile', JSON.stringify(data.user));
+          
+          // Update Eco-Guardian Health
+          updateEcoHealth(currentUser.id, 20);
         }
         fetchData();
       }
@@ -1845,10 +1985,21 @@ export default function App() {
 
       if (res.ok) {
         const data = await res.json();
+        let xpGained = 10;
+        if (isScientific) xpGained += 5;
+        if (isMission) xpGained += (gameLevel * 5);
+        
         if (data.user) {
           setCurrentUser(data.user);
           localStorage.setItem('edugram_user_profile', JSON.stringify(data.user));
         }
+        
+        // Show Carbon Receipt
+        setReceiptData({ isOpen: true, xp: xpGained, title: subbab });
+        
+        // Update Eco-Guardian Health
+        updateEcoHealth(currentUser.id, 10);
+        
         setCaption('');
         setImageUrl('');
         setIsLocationEnabled(false);
@@ -1927,6 +2078,12 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans selection:bg-[#8A9A5B] selection:text-white pb-20">
       <TutorialModal isOpen={isTutorialOpen} onClose={handleCloseTutorial} />
+      <CarbonReceiptModal 
+        isOpen={receiptData.isOpen} 
+        onClose={() => setReceiptData({ ...receiptData, isOpen: false })} 
+        xpGained={receiptData.xp} 
+        postTitle={receiptData.title} 
+      />
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
@@ -1974,6 +2131,31 @@ export default function App() {
         
         {/* Left Column: Feed & Input */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Class Forest Goal */}
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#8A9A5B] opacity-5 rounded-full -mr-10 -mt-10 pointer-events-none"></div>
+            <div className="flex items-center justify-between mb-3 relative z-10">
+              <h2 className="font-bold text-lg text-[#4A4036] flex items-center gap-2">
+                <Leaf className="w-5 h-5 text-[#8A9A5B]" />
+                Class Forest Goal
+              </h2>
+              <span className="text-sm font-bold text-[#8A9A5B] bg-[#F4F1EA] px-3 py-1 rounded-full border border-[#E5E0D8]">
+                {leaderboard.reduce((sum, u) => sum + u.xp, 0)} / 5000 XP
+              </span>
+            </div>
+            <p className="text-sm text-[#A8A096] mb-4 relative z-10">
+              Misi Kelas: Kumpulkan 5000 XP untuk menanam hutan virtual!
+            </p>
+            <div className="w-full h-4 bg-[#F4F1EA] rounded-full overflow-hidden border border-[#E5E0D8] relative z-10">
+              <div 
+                className="h-full bg-gradient-to-r from-[#8A9A5B] to-[#7A8A4B] transition-all duration-1000 relative"
+                style={{ width: `${Math.min(100, (leaderboard.reduce((sum, u) => sum + u.xp, 0) / 5000) * 100)}%` }}
+              >
+                <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite] -skew-x-12"></div>
+              </div>
+            </div>
+          </div>
+
           <DailyQuestBanner />
           {/* Create Post Form */}
           <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">
