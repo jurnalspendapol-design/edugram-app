@@ -576,6 +576,80 @@ app.post("/api/posts", async (req, res) => {
   }
 });
 
+// Update Post
+app.put("/api/posts/:id", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { userId, caption, subbab, isScientific } = req.body;
+    const postId = req.params.id;
+
+    // Verify ownership
+    const { data: post, error: fetchError } = await supabase
+      .from('posts')
+      .select('author_id')
+      .eq('id', postId)
+      .single();
+
+    if (fetchError || !post) {
+      return res.status(404).json({ error: "Postingan tidak ditemukan" });
+    }
+
+    if (post.author_id !== userId) {
+      return res.status(403).json({ error: "Anda tidak diizinkan mengubah postingan ini" });
+    }
+
+    const { error: updateError } = await supabase
+      .from('posts')
+      .update({ caption, subbab, is_scientific: isScientific })
+      .eq('id', postId);
+
+    if (updateError) {
+      return res.status(500).json({ error: "Gagal memperbarui postingan" });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete Post
+app.delete("/api/posts/:id", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { userId } = req.body;
+    const postId = req.params.id;
+
+    // Verify ownership
+    const { data: post, error: fetchError } = await supabase
+      .from('posts')
+      .select('author_id')
+      .eq('id', postId)
+      .single();
+
+    if (fetchError || !post) {
+      return res.status(404).json({ error: "Postingan tidak ditemukan" });
+    }
+
+    if (post.author_id !== userId) {
+      return res.status(403).json({ error: "Anda tidak diizinkan menghapus postingan ini" });
+    }
+
+    const { error: deleteError } = await supabase
+      .from('posts')
+      .delete()
+      .eq('id', postId);
+
+    if (deleteError) {
+      return res.status(500).json({ error: "Gagal menghapus postingan" });
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Interact with Post (Toggle)
 app.post("/api/posts/:id/interact", async (req, res) => {
   try {

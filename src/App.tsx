@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil } from 'lucide-react';
 
 type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
 
@@ -1061,6 +1061,10 @@ export default function App() {
   const [view, setView] = useState<'feed' | 'profile' | 'students'>('feed');
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<Post | null>(null);
+  const [editCaption, setEditCaption] = useState('');
+  const [editSubbab, setEditSubbab] = useState<Subbab>('Kesehatan Lingkungan');
+  const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [selectedUserForProfile, setSelectedUserForProfile] = useState<UserProfile | null>(null);
   
   // Assignment Modal State
@@ -1135,6 +1139,60 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem('edugram_user_profile');
     setView('feed');
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    if (!currentUser || !window.confirm('Apakah Anda yakin ingin menghapus postingan ini?')) return;
+
+    try {
+      const res = await fetch(`/api/posts/${postId}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id })
+      });
+
+      if (res.ok) {
+        fetchData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Gagal menghapus postingan');
+      }
+    } catch (err) {
+      console.error("Failed to delete post", err);
+    }
+    setActiveDropdown(null);
+  };
+
+  const handleUpdatePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser || !editingPost || !editCaption.trim()) return;
+
+    const isScientific = SCIENTIFIC_KEYWORDS.some(keyword => 
+      editCaption.toLowerCase().includes(keyword)
+    );
+
+    try {
+      const res = await fetch(`/api/posts/${editingPost.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          caption: editCaption,
+          subbab: editSubbab,
+          isScientific
+        })
+      });
+
+      if (res.ok) {
+        setEditingPost(null);
+        fetchData();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Gagal memperbarui postingan');
+      }
+    } catch (err) {
+      console.error("Failed to update post", err);
+    }
   };
 
   const handlePost = async (e: React.FormEvent) => {
@@ -1407,9 +1465,43 @@ export default function App() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${SUBBAB_COLORS[post.subbab]}`}>
-                          {post.subbab}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          {currentUser?.id === post.authorId && (
+                            <div className="relative">
+                              <button 
+                                onClick={() => setActiveDropdown(activeDropdown === post.id ? null : post.id)}
+                                className="p-1 hover:bg-[#F4F1EA] rounded-full transition-colors text-[#A8A096]"
+                              >
+                                <MoreVertical className="w-5 h-5" />
+                              </button>
+                              
+                              {activeDropdown === post.id && (
+                                <div className="absolute right-0 mt-1 w-36 bg-white rounded-xl shadow-xl border border-[#E5E0D8] py-1 z-50">
+                                  <button 
+                                    onClick={() => {
+                                      setEditingPost(post);
+                                      setEditCaption(post.caption);
+                                      setEditSubbab(post.subbab);
+                                      setActiveDropdown(null);
+                                    }}
+                                    className="w-full text-left px-4 py-2 text-sm hover:bg-[#F4F1EA] flex items-center gap-2 text-[#4A4A4A]"
+                                  >
+                                    <Pencil className="w-4 h-4" /> Edit
+                                  </button>
+                                  <button 
+                                    onClick={() => handleDeletePost(post.id)}
+                                    className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 flex items-center gap-2 text-red-600"
+                                  >
+                                    <Trash2 className="w-4 h-4" /> Hapus
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${SUBBAB_COLORS[post.subbab]}`}>
+                            {post.subbab}
+                          </span>
+                        </div>
                         {post.isScientific && (
                           <span className="text-[10px] uppercase tracking-wider font-bold bg-[#8A9A5B] text-white px-2 py-0.5 rounded-sm flex items-center gap-1 shadow-sm">
                             <Sparkles className="w-3 h-3" /> Scientific
@@ -1596,6 +1688,74 @@ export default function App() {
             </div>
           </div>
         </div>
+
+        {/* Edit Post Modal */}
+        {editingPost && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
+              <div className="p-6 border-b border-[#E5E0D8] flex items-center justify-between bg-[#F4F1EA]">
+                <h2 className="text-xl font-bold text-[#4A4A4A] flex items-center gap-2">
+                  <Pencil className="w-5 h-5 text-[#8A9A5B]" /> Edit Postingan
+                </h2>
+                <button 
+                  onClick={() => setEditingPost(null)}
+                  className="p-2 hover:bg-white rounded-full transition-colors text-[#A8A096]"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+              
+              <form onSubmit={handleUpdatePost} className="p-6">
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-[#4A4A4A] mb-2 uppercase tracking-wider">Topik Lingkungan</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {(['Kesehatan Lingkungan', 'Pemanasan Global', 'Krisis Energi', 'Ketahanan Pangan'] as Subbab[]).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setEditSubbab(s)}
+                        className={`px-3 py-2 rounded-xl text-xs font-bold border transition-all ${
+                          editSubbab === s 
+                            ? 'bg-[#8A9A5B] text-white border-[#8A9A5B] shadow-md' 
+                            : 'bg-white text-[#A8A096] border-[#E5E0D8] hover:border-[#8A9A5B]'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-[#4A4A4A] mb-2 uppercase tracking-wider">Caption</label>
+                  <textarea
+                    value={editCaption}
+                    onChange={(e) => setEditCaption(e.target.value)}
+                    className="w-full h-40 p-4 bg-[#F4F1EA] border border-[#E5E0D8] rounded-2xl focus:ring-2 focus:ring-[#8A9A5B] focus:border-transparent outline-none resize-none text-[#4A4A4A]"
+                    placeholder="Apa yang ingin kamu bagikan hari ini?"
+                    required
+                  />
+                </div>
+
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPost(null)}
+                    className="flex-1 px-6 py-3 rounded-2xl font-bold text-[#A8A096] bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-colors"
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 px-6 py-3 rounded-2xl font-bold text-white bg-[#8A9A5B] hover:bg-[#7A8A4B] shadow-lg shadow-[#8A9A5B]/20 transition-all"
+                  >
+                    Simpan Perubahan
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
       </main>
 
