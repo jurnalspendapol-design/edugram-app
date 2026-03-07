@@ -240,29 +240,41 @@ app.get("/api/users/:id", async (req, res) => {
     let isFollowing = false;
 
     try {
-      const { count: followers } = await supabase
+      const { count: followers, error: fError } = await supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
         .eq('following_id', user.id);
+      
+      if (fError) throw fError;
       followersCount = followers || 0;
 
-      const { count: following } = await supabase
+      const { count: following, error: flError } = await supabase
         .from('follows')
         .select('*', { count: 'exact', head: true })
         .eq('follower_id', user.id);
+      
+      if (flError) throw flError;
       followingCount = following || 0;
 
       if (viewerId) {
-        const { data: followData } = await supabase
+        const { data: followData, error: fdError } = await supabase
           .from('follows')
           .select('id')
           .eq('follower_id', viewerId)
           .eq('following_id', user.id)
           .maybeSingle();
+        
+        if (fdError) throw fdError;
         isFollowing = !!followData;
       }
     } catch (e) {
-      console.log("Follows table likely missing");
+      console.log("Follows table likely missing, using fallback");
+      // Use fallback
+      followersCount = Object.values(fallbackFollows).filter(list => list.includes(user.id)).length;
+      followingCount = fallbackFollows[user.id] ? fallbackFollows[user.id].length : 0;
+      if (viewerId) {
+        isFollowing = fallbackFollows[viewerId] ? fallbackFollows[viewerId].includes(user.id) : false;
+      }
     }
 
     res.json({ 
@@ -309,6 +321,9 @@ app.post("/api/users/:id/profile", async (req, res) => {
   }
 });
 
+// In-memory fallback for follows if Supabase table is missing
+const fallbackFollows: Record<string, string[]> = {}; // followerId -> array of followingIds
+
 // Toggle Follow
 app.post("/api/users/:id/follow", async (req, res) => {
   try {
@@ -320,23 +335,38 @@ app.post("/api/users/:id/follow", async (req, res) => {
       return res.status(400).json({ error: "Data tidak valid" });
     }
 
-    const { data: existingFollow } = await supabase
+    const { data: existingFollow, error: selectError } = await supabase
       .from('follows')
       .select('id')
       .eq('follower_id', followerId)
       .eq('following_id', followingId)
       .maybeSingle();
 
+    if (selectError) {
+      // Fallback to in-memory
+      if (!fallbackFollows[followerId]) fallbackFollows[followerId] = [];
+      const index = fallbackFollows[followerId].indexOf(followingId);
+      if (index > -1) {
+        fallbackFollows[followerId].splice(index, 1);
+        return res.json({ success: true, action: 'unfollowed', fallback: true });
+      } else {
+        fallbackFollows[followerId].push(followingId);
+        return res.json({ success: true, action: 'followed', fallback: true });
+      }
+    }
+
     if (existingFollow) {
-      await supabase.from('follows').delete().eq('id', existingFollow.id);
+      const { error: deleteError } = await supabase.from('follows').delete().eq('id', existingFollow.id);
+      if (deleteError) throw deleteError;
       res.json({ success: true, action: 'unfollowed' });
     } else {
-      await supabase.from('follows').insert([{
+      const { error: insertError } = await supabase.from('follows').insert([{
         id: Date.now().toString(),
         follower_id: followerId,
         following_id: followingId,
         created_at: new Date().toISOString()
       }]);
+      if (insertError) throw insertError;
       res.json({ success: true, action: 'followed' });
     }
   } catch (error: any) {

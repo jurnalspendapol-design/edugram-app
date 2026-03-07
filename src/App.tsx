@@ -991,6 +991,9 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   };
 
   const handleFollow = async () => {
+    const previousState = isFollowing;
+    setIsFollowing(!isFollowing); // Optimistic update
+    
     try {
       const res = await fetch(`/api/users/${user.id}/follow`, {
         method: 'POST',
@@ -999,9 +1002,15 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
       });
       if (res.ok) {
         fetchProfile();
+      } else {
+        setIsFollowing(previousState); // Revert on error
+        const data = await res.json();
+        alert(data.error || "Gagal mengikuti pengguna. Pastikan tabel 'follows' sudah dibuat di Supabase.");
       }
     } catch (err) {
+      setIsFollowing(previousState); // Revert on error
       console.error(err);
+      alert("Terjadi kesalahan koneksi.");
     }
   };
 
@@ -1079,17 +1088,17 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
             </div>
           </div>
           
-          <div className="pt-16 pb-8 px-6 text-center">
+          <div className="pt-16 pb-8 px-6 text-center relative z-10">
             <div className="flex justify-center items-center gap-2 mb-1">
               <h2 className="text-2xl font-bold">{profileData?.fullName}</h2>
               {isOwnProfile ? (
-                <button onClick={() => setIsEditing(!isEditing)} className="p-1 hover:bg-gray-100 rounded-full">
+                <button onClick={() => setIsEditing(!isEditing)} className="p-1 hover:bg-gray-100 rounded-full relative z-20">
                   <Sparkles className="w-4 h-4 text-[#8A9A5B]" />
                 </button>
               ) : (
                 <button 
                   onClick={handleFollow}
-                  className={`px-4 py-1 rounded-full text-xs font-bold transition-all ${isFollowing ? 'bg-[#E5E0D8] text-[#A8A096]' : 'bg-[#8A9A5B] text-white shadow-sm'}`}
+                  className={`px-4 py-1 rounded-full text-xs font-bold transition-all relative z-20 ${isFollowing ? 'bg-[#E5E0D8] text-[#A8A096]' : 'bg-[#8A9A5B] text-white shadow-sm'}`}
                 >
                   {isFollowing ? 'Mengikuti' : 'Ikuti'}
                 </button>
