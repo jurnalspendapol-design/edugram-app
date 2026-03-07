@@ -5,10 +5,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import 'leaflet.heat';
 
 // Fix Leaflet default icon issue
 // @ts-ignore
@@ -79,6 +80,8 @@ interface Post {
   locationLat?: number;
   locationLng?: number;
   assignments?: any[];
+  isMission?: boolean;
+  gameLevel?: number;
 }
 
 interface Comment {
@@ -216,9 +219,45 @@ const ChangeView = ({ center }: { center: [number, number] }) => {
 const ISSUE_KEYWORDS = ['limbah', 'polusi', 'sampah', 'kotor', 'asap', 'emisi', 'rusak', 'cemar', 'banjir', 'kekeringan', 'penebangan', 'kebakaran', 'plastik', 'oli', 'racun'];
 const SOLUTION_KEYWORDS = ['solusi', 'tanam', 'pohon', 'daur ulang', 'hemat', 'bersih', 'hijau', 'surya', 'kompos', 'organik', 'sepeda', 'jalan', 'tumbler', 'bibit', 'pupuk', 'biogas', 'manggrove'];
 
+const HeatmapLayer = ({ points }: { points: [number, number, number][] }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map) return;
+
+    // @ts-ignore - leaflet.heat adds heatLayer to L
+    const heatLayer = L.heatLayer(points, {
+      radius: 25,
+      blur: 15,
+      maxZoom: 17,
+      gradient: {
+        0.4: 'blue',
+        0.6: 'lime',
+        0.7: 'yellow',
+        0.8: 'orange',
+        1.0: 'red'
+      }
+    }).addTo(map);
+
+    return () => {
+      map.removeLayer(heatLayer);
+    };
+  }, [map, points]);
+
+  return null;
+};
+
 const EcoMap = ({ posts }: { posts: Post[] }) => {
   const mapPosts = posts.filter(p => p.locationLat != null && p.locationLng != null);
   
+  // Prepare heatmap points (only for issues)
+  const heatmapPoints: [number, number, number][] = mapPosts
+    .filter(post => {
+      const captionLower = post.caption.toLowerCase();
+      return ISSUE_KEYWORDS.some(k => captionLower.includes(k));
+    })
+    .map(post => [post.locationLat!, post.locationLng!, 1.0]); // Lat, Lng, Intensity
+
   // Default center if no posts with location
   const defaultCenter: [number, number] = [-6.2, 106.8];
   const center: [number, number] = mapPosts.length > 0 
@@ -241,6 +280,10 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
             <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
             <span>Solusi</span>
           </div>
+          <div className="flex items-center gap-1 ml-2 px-1.5 py-0.5 bg-orange-100 text-orange-700 rounded border border-orange-200">
+            <Flame className="w-2.5 h-2.5" />
+            <span>Heatmap Aktif</span>
+          </div>
         </div>
       </div>
       <div id="map" className="h-[200px] w-full z-0">
@@ -255,6 +298,10 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
+          
+          {/* Heatmap Layer */}
+          {heatmapPoints.length > 0 && <HeatmapLayer points={heatmapPoints} />}
+
           {mapPosts.map(post => {
             const captionLower = post.caption.toLowerCase();
             const isIssue = ISSUE_KEYWORDS.some(k => captionLower.includes(k));
@@ -282,6 +329,364 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
             );
           })}
         </MapContainer>
+      </div>
+    </div>
+  );
+};
+
+const LevelUpOverlay = ({ level, isOpen, onClose }: { level: number, isOpen: boolean, onClose: () => void }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 backdrop-blur-md animate-in fade-in duration-500">
+      <div className="bg-white rounded-[40px] p-12 text-center shadow-2xl border-4 border-[#8A9A5B] animate-in zoom-in duration-500">
+        <div className="relative inline-block mb-6">
+          <div className="absolute inset-0 bg-[#8A9A5B] blur-2xl opacity-20 animate-pulse"></div>
+          <Trophy className="w-24 h-24 text-[#8A9A5B] relative z-10" />
+        </div>
+        <h2 className="text-4xl font-black text-[#4A4036] mb-2 italic uppercase tracking-tighter">Level Up!</h2>
+        <p className="text-xl text-[#A8A096] mb-8">Kamu sekarang Level <span className="text-[#8A9A5B] font-black">{level}</span></p>
+        <button 
+          onClick={onClose}
+          className="bg-[#8A9A5B] text-white px-12 py-4 rounded-full font-black text-lg shadow-xl hover:bg-[#7A8A4B] transition-all active:scale-95"
+        >
+          Lanjut Beraksi!
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const EcoArcadeModal = ({ isOpen, onClose, level, onComplete, gameType: initialGameType }: { isOpen: boolean, onClose: () => void, level: number, onComplete: (xp: number) => void, gameType?: 'sort' | 'shield' | 'clicker' }) => {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [score, setScore] = useState(0);
+  const [misses, setMisses] = useState(0);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [gameOver, setGameOver] = useState(false);
+  const [gameStarted, setGameStarted] = useState(false);
+  const [gameType, setGameType] = useState<'sort' | 'shield' | 'clicker'>(initialGameType || 'sort');
+  const requestRef = useRef<number | null>(null);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const gameState = useRef({
+    player: { x: 150, y: 350, w: 50, h: 30 },
+    items: [] as any[],
+    lastSpawn: 0,
+    score: 0,
+    misses: 0,
+    level: level,
+    clickerItems: [] as any[]
+  });
+
+  useEffect(() => {
+    if (initialGameType) setGameType(initialGameType);
+  }, [initialGameType]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setGameStarted(false);
+      setScore(0);
+      setMisses(0);
+      setTimeLeft(30);
+      setGameOver(false);
+      gameState.current.score = 0;
+      gameState.current.misses = 0;
+      gameState.current.items = [];
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      return;
+    }
+  }, [isOpen]);
+
+  const startGame = () => {
+    setGameStarted(true);
+    setScore(0);
+    setMisses(0);
+    setTimeLeft(30);
+    setGameOver(false);
+    gameState.current.score = 0;
+    gameState.current.misses = 0;
+    gameState.current.items = [];
+    gameState.current.level = level;
+
+    if (gameType === 'clicker') {
+      gameState.current.clickerItems = [
+        { id: 'lampu', label: 'Lampu', active: false, icon: <Zap /> },
+        { id: 'tv', label: 'TV', active: false, icon: <Tv /> },
+        { id: 'ac', label: 'AC', active: false, icon: <Wind /> },
+        { id: 'kulkas', label: 'Kulkas', active: false, icon: <Refrigerator /> }
+      ];
+      startClickerTimer();
+    } else {
+      requestRef.current = requestAnimationFrame(gameLoop);
+    }
+  };
+
+  const startClickerTimer = () => {
+    timerRef.current = setInterval(() => {
+      setTimeLeft(prev => {
+        if (prev <= 1) {
+          clearInterval(timerRef.current!);
+          setGameOver(true);
+          return 0;
+        }
+        return prev - 1;
+      });
+
+      // Randomly activate an item
+      if (Math.random() > 0.4) {
+        const idx = Math.floor(Math.random() * 4);
+        gameState.current.clickerItems[idx].active = true;
+        setScore(prev => prev); // Trigger re-render
+      }
+    }, 1000);
+  };
+
+  const handleItemClick = (id: string) => {
+    const item = gameState.current.clickerItems.find(i => i.id === id);
+    if (item && item.active) {
+      item.active = false;
+      gameState.current.score += 1;
+      setScore(gameState.current.score);
+      if (gameState.current.score >= 15) {
+        setGameOver(true);
+        clearInterval(timerRef.current!);
+        onComplete(150);
+      }
+    }
+  };
+
+  const gameLoop = (time: number) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameType === 'sort') {
+      // Spawn
+      if (time - gameState.current.lastSpawn > (level === 1 ? 1000 : level === 2 ? 600 : 400)) {
+        const x = Math.random() * (canvas.width - 20);
+        const type = Math.random() > 0.3 ? 'good' : 'bad';
+        gameState.current.items.push({ x, y: -20, type, speed: 2 + (level * 0.5) });
+        gameState.current.lastSpawn = time;
+      }
+
+      // Update & Draw
+      gameState.current.items = gameState.current.items.filter(item => {
+        item.y += item.speed;
+        ctx.fillStyle = item.type === 'good' ? '#8A9A5B' : '#EF4444';
+        ctx.fillRect(item.x, item.y, 20, 20);
+
+        const p = gameState.current.player;
+        if (item.y + 20 > p.y && item.x < p.x + p.w && item.x + 20 > p.x) {
+          if (item.type === 'good') {
+            gameState.current.score += 10;
+            setScore(gameState.current.score);
+          } else {
+            gameState.current.score = Math.max(0, gameState.current.score - 5);
+            setScore(gameState.current.score);
+          }
+          return false;
+        }
+        return item.y < canvas.height;
+      });
+
+      if (gameState.current.score >= 100) {
+        setGameOver(true);
+        onComplete(200);
+        return;
+      }
+    } else if (gameType === 'shield') {
+      // Atmosphere Shield Logic
+      if (time - gameState.current.lastSpawn > 800) {
+        const x = Math.random() * (canvas.width - 20);
+        gameState.current.items.push({ x, y: -20, speed: 3 });
+        gameState.current.lastSpawn = time;
+      }
+
+      gameState.current.items = gameState.current.items.filter(item => {
+        item.y += item.speed;
+        ctx.fillStyle = '#4B5563'; // Gray CO2
+        ctx.beginPath();
+        ctx.arc(item.x + 10, item.y + 10, 10, 0, Math.PI * 2);
+        ctx.fill();
+
+        const p = gameState.current.player;
+        // Shield is wider and thinner
+        p.w = 80; p.h = 10;
+        if (item.y + 20 > p.y && item.x < p.x + p.w && item.x + 20 > p.x) {
+          gameState.current.score += 1;
+          setScore(gameState.current.score);
+          return false;
+        }
+
+        if (item.y > canvas.height) {
+          gameState.current.misses += 1;
+          setMisses(gameState.current.misses);
+          return false;
+        }
+        return true;
+      });
+
+      if (gameState.current.score >= 20) {
+        setGameOver(true);
+        onComplete(150);
+        return;
+      }
+      if (gameState.current.misses >= 5) {
+        setGameOver(true);
+        return;
+      }
+    }
+
+    // Draw Player (Shield/Basket)
+    if (gameType !== 'clicker') {
+      ctx.fillStyle = '#4A4036';
+      ctx.fillRect(gameState.current.player.x, gameState.current.player.y, gameState.current.player.w, gameState.current.player.h);
+    }
+
+    if (!gameOver) {
+      requestRef.current = requestAnimationFrame(gameLoop);
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    gameState.current.player.x = Math.max(0, Math.min(canvas.width - gameState.current.player.w, x - gameState.current.player.w / 2));
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl animate-in zoom-in duration-300">
+        <div className="p-6 border-b border-[#E5E0D8] flex items-center justify-between bg-[#8A9A5B] text-white">
+          <div className="flex items-center gap-3">
+            <Gamepad2 className="w-6 h-6" />
+            <div>
+              <h2 className="font-bold text-lg leading-none">Eco-Arcade</h2>
+              <p className="text-[10px] opacity-80 uppercase tracking-widest mt-1">
+                {gameType === 'sort' ? 'Sortir Sampah' : gameType === 'shield' ? 'Atmosphere Shield' : 'Energy Saver'}
+              </p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-full transition-colors">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="p-6">
+          {!gameStarted && !initialGameType && (
+            <div className="grid grid-cols-1 gap-3 mb-6">
+              <button onClick={() => setGameType('sort')} className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-4 ${gameType === 'sort' ? 'border-[#8A9A5B] bg-[#8A9A5B]/5' : 'border-[#E5E0D8] hover:border-[#8A9A5B]'}`}>
+                <div className="w-12 h-12 bg-[#8A9A5B] rounded-xl flex items-center justify-center text-white"><Trash2 /></div>
+                <div>
+                  <div className="font-bold text-[#4A4036]">Sortir Sampah</div>
+                  <div className="text-[10px] text-[#A8A096]">Tangkap sampah organik untuk poin!</div>
+                </div>
+              </button>
+              <button onClick={() => setGameType('shield')} className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-4 ${gameType === 'shield' ? 'border-[#8A9A5B] bg-[#8A9A5B]/5' : 'border-[#E5E0D8] hover:border-[#8A9A5B]'}`}>
+                <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center text-white"><Shield /></div>
+                <div>
+                  <div className="font-bold text-[#4A4036]">Atmosphere Shield</div>
+                  <div className="text-[10px] text-[#A8A096]">Tangkis CO2 agar suhu bumi stabil!</div>
+                </div>
+              </button>
+              <button onClick={() => setGameType('clicker')} className={`p-4 rounded-2xl border-2 transition-all text-left flex items-center gap-4 ${gameType === 'clicker' ? 'border-[#8A9A5B] bg-[#8A9A5B]/5' : 'border-[#E5E0D8] hover:border-[#8A9A5B]'}`}>
+                <div className="w-12 h-12 bg-yellow-500 rounded-xl flex items-center justify-center text-white"><Zap /></div>
+                <div>
+                  <div className="font-bold text-[#4A4036]">Energy Saver</div>
+                  <div className="text-[10px] text-[#A8A096]">Matikan alat listrik yang boros!</div>
+                </div>
+              </button>
+            </div>
+          )}
+
+          <div className="mb-4 flex items-center justify-between">
+            <div className="bg-[#F4F1EA] px-4 py-2 rounded-2xl border border-[#E5E0D8]">
+              <span className="text-xs font-bold text-[#A8A096] uppercase block">Skor</span>
+              <span className="text-2xl font-black text-[#8A9A5B]">{score} / {gameType === 'sort' ? '100' : gameType === 'shield' ? '20' : '15'}</span>
+            </div>
+            {gameType === 'shield' && (
+              <div className="bg-red-50 px-4 py-2 rounded-2xl border border-red-100">
+                <span className="text-xs font-bold text-red-400 uppercase block">Meleset</span>
+                <span className="text-2xl font-black text-red-500">{misses} / 5</span>
+              </div>
+            )}
+            {gameType === 'clicker' && (
+              <div className="bg-blue-50 px-4 py-2 rounded-2xl border border-blue-100">
+                <span className="text-xs font-bold text-blue-400 uppercase block">Waktu</span>
+                <span className="text-2xl font-black text-blue-500">{timeLeft}s</span>
+              </div>
+            )}
+          </div>
+
+          <div className="relative bg-[#F4F1EA] rounded-2xl border-2 border-[#E5E0D8] overflow-hidden">
+            {gameType === 'clicker' ? (
+              <div className="w-full h-[400px] grid grid-cols-2 gap-4 p-8">
+                {gameState.current.clickerItems.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => handleItemClick(item.id)}
+                    className={`rounded-3xl flex flex-col items-center justify-center gap-2 transition-all shadow-sm border-2 ${item.active ? 'bg-red-500 text-white border-red-600 animate-pulse' : 'bg-green-500 text-white border-green-600 opacity-50'}`}
+                  >
+                    {item.icon}
+                    <span className="font-bold text-xs">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <canvas
+                ref={canvasRef}
+                width={300}
+                height={400}
+                onMouseMove={handleMouseMove}
+                className="w-full h-auto block cursor-none"
+              />
+            )}
+            
+            {!gameStarted && (
+              <div className="absolute inset-0 bg-[#F4F1EA]/80 flex flex-col items-center justify-center p-8 text-center">
+                <h3 className="font-bold text-xl mb-2">Siap Memulai?</h3>
+                <p className="text-sm text-[#4A4036] mb-6">Dapatkan XP dengan menyelesaikan misi!</p>
+                <button
+                  onClick={startGame}
+                  className="bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white px-8 py-3 rounded-full font-bold shadow-md transition-all hover:scale-105"
+                >
+                  Mulai Game
+                </button>
+              </div>
+            )}
+
+            {gameOver && (
+              <div className={`absolute inset-0 flex flex-col items-center justify-center p-8 text-center text-white ${((gameType === 'sort' && score >= 100) || (gameType === 'shield' && score >= 20) || (gameType === 'clicker' && score >= 15)) ? 'bg-[#8A9A5B]/90' : 'bg-red-500/90'}`}>
+                {((gameType === 'sort' && score >= 100) || (gameType === 'shield' && score >= 20) || (gameType === 'clicker' && score >= 15)) ? (
+                  <>
+                    <Trophy className="w-16 h-16 mb-4 animate-bounce" />
+                    <h3 className="font-black text-3xl mb-2">MISI BERHASIL!</h3>
+                    <p className="text-lg mb-6 opacity-90">Kamu mendapatkan XP</p>
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-16 h-16 mb-4" />
+                    <h3 className="font-black text-3xl mb-2">MISI GAGAL</h3>
+                    <p className="text-lg mb-6 opacity-90">Coba lagi!</p>
+                  </>
+                )}
+                <button
+                  onClick={onClose}
+                  className="bg-white text-[#4A4036] px-10 py-3 rounded-full font-bold shadow-lg transition-all hover:scale-105"
+                >
+                  Tutup
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1195,12 +1600,22 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedPostForReport, setSelectedPostForReport] = useState<Post | null>(null);
   
+  // Eco-Arcade State
+  const [isArcadeOpen, setIsArcadeOpen] = useState(false);
+  const [activeGameLevel, setActiveGameLevel] = useState(1);
+  const [activeGameType, setActiveGameType] = useState<'sort' | 'shield' | 'clicker' | undefined>(undefined);
+  const [activeMissionPostId, setActiveMissionPostId] = useState<string | null>(null);
+  const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
+  const [lastLevel, setLastLevel] = useState(1);
+
   // Form state
   const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isLocationEnabled, setIsLocationEnabled] = useState(false);
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [isMission, setIsMission] = useState(false);
+  const [gameLevel, setGameLevel] = useState(1);
 
   // Load user from localStorage
   useEffect(() => {
@@ -1238,6 +1653,38 @@ export default function App() {
       fetchData();
     }
   }, [currentUser, view]);
+
+  const handleMissionComplete = async (xp: number = 200) => {
+    if (!currentUser) return;
+    
+    try {
+      const res = await fetch('/api/missions/complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: currentUser.id, postId: activeMissionPostId, xp })
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        if (data.user) {
+          const newXp = data.user.xp;
+          const currentLevel = Math.floor(newXp / 500) + 1;
+          const oldLevel = Math.floor(currentUser.xp / 500) + 1;
+          
+          if (currentLevel > oldLevel) {
+            setLastLevel(currentLevel);
+            setIsLevelUpOpen(true);
+          }
+
+          setCurrentUser(data.user);
+          localStorage.setItem('edugram_user_profile', JSON.stringify(data.user));
+        }
+        fetchData();
+      }
+    } catch (err) {
+      console.error("Failed to complete mission", err);
+    }
+  };
 
   const handleLogin = (profile: UserProfile) => {
     setCurrentUser(profile);
@@ -1360,6 +1807,8 @@ export default function App() {
           caption,
           imageUrl,
           isScientific,
+          isMission,
+          gameLevel,
           locationLat: isLocationEnabled && userCoords ? userCoords.lat : null,
           locationLng: isLocationEnabled && userCoords ? userCoords.lng : null
         })
@@ -1375,6 +1824,8 @@ export default function App() {
         setImageUrl('');
         setIsLocationEnabled(false);
         setUserCoords(null);
+        setIsMission(false);
+        setGameLevel(1);
         fetchData(); // Refresh feed
       } else {
         const data = await res.json();
@@ -1543,6 +1994,44 @@ export default function App() {
                   />
                 </div>
 
+                {/* Game Master Panel (Teacher Only) */}
+                {currentUser.role === 'teacher' && (
+                  <div className="mt-3 p-4 bg-[#8A9A5B]/10 rounded-2xl border border-[#8A9A5B]/20">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <Gamepad2 className="w-4 h-4 text-[#8A9A5B]" />
+                        <span className="text-sm font-bold text-[#8A9A5B]">Game Master Panel</span>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer" 
+                          checked={isMission}
+                          onChange={(e) => setIsMission(e.target.checked)}
+                        />
+                        <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#8A9A5B]"></div>
+                        <span className="ml-2 text-xs font-bold text-[#4A4036]">Aktifkan Misi</span>
+                      </label>
+                    </div>
+                    
+                    {isMission && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {[1, 2, 3].map(lvl => (
+                          <button
+                            key={lvl}
+                            type="button"
+                            onClick={() => setGameLevel(lvl)}
+                            className={`flex flex-col items-center gap-1 p-2 rounded-xl border transition-all ${gameLevel === lvl ? 'bg-[#8A9A5B] text-white border-[#8A9A5B]' : 'bg-white text-[#4A4036] border-[#E5E0D8] hover:border-[#8A9A5B]'}`}
+                          >
+                            {lvl === 1 ? <Trash2 className="w-4 h-4" /> : lvl === 2 ? <Zap className="w-4 h-4" /> : <Globe className="w-4 h-4" />}
+                            <span className="text-[10px] font-bold uppercase">Lvl {lvl}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mt-4 pt-4 border-t border-[#E5E0D8]">
                   <div className="text-xs text-[#A8A096] flex-1">
                     <span className="font-bold text-[#8A9A5B]">Tips:</span> Gunakan kata "Emisi", "Gas Rumah Kaca", "Limbah", atau "Biogas" untuk badge spesial!
@@ -1676,6 +2165,31 @@ export default function App() {
                       <div className="prose prose-sm prose-stone max-w-none mb-4 prose-p:leading-relaxed prose-a:text-[#8A9A5B]">
                         <ReactMarkdown>{post.caption}</ReactMarkdown>
                       </div>
+
+                      {post.isMission && (
+                        <div className="mb-4 p-4 bg-[#8A9A5B]/5 rounded-2xl border border-[#8A9A5B]/20 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 bg-[#8A9A5B] rounded-xl flex items-center justify-center shadow-sm">
+                              <Gamepad2 className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                              <h4 className="font-bold text-sm text-[#4A4036]">Misi Edu-Arcade</h4>
+                              <p className="text-[10px] text-[#A8A096] uppercase tracking-wider">Level {post.gameLevel || 1}: {post.gameLevel === 1 ? 'Sorting Sampah' : post.gameLevel === 2 ? 'Krisis Energi' : 'Pemanasan Global'}</p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setActiveGameLevel(post.gameLevel || 1);
+                              setActiveMissionPostId(post.id);
+                              setIsArcadeOpen(true);
+                            }}
+                            className="bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all active:scale-95 flex items-center gap-2"
+                          >
+                            <span>Mainkan Misi</span>
+                            <ArrowLeft className="w-3 h-3 rotate-180" />
+                          </button>
+                        </div>
+                      )}
                       
                       {post.imageUrl && (
                         <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#F4F1EA]">
@@ -1791,11 +2305,58 @@ export default function App() {
             post={selectedPostForReport} 
             reporterId={currentUser.id} 
           />
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 sticky top-24">
-            <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
-              <Trophy className="w-5 h-5 text-[#D2B48C]" />
-              Top Eco-Influencers
-            </h2>
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 sticky top-24 space-y-6">
+            {/* Eco-Arcade Mini Games */}
+            <div>
+              <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Gamepad2 className="w-5 h-5 text-[#8A9A5B]" />
+                Eco-Arcade
+              </h2>
+              <div className="space-y-2">
+                <button 
+                  onClick={() => { setActiveGameType('sort'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-[#8A9A5B] group"
+                >
+                  <div className="w-8 h-8 bg-[#8A9A5B] rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                    <Trash2 className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-[#4A4036]">Sortir Sampah</div>
+                    <div className="text-[9px] text-[#A8A096]">Misi Level 1</div>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => { setActiveGameType('shield'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-blue-500 group"
+                >
+                  <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                    <Shield className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-[#4A4036]">Atmosphere Shield</div>
+                    <div className="text-[9px] text-[#A8A096]">Misi Level 2</div>
+                  </div>
+                </button>
+                <button 
+                  onClick={() => { setActiveGameType('clicker'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-yellow-500 group"
+                >
+                  <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                    <Zap className="w-4 h-4" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-xs font-bold text-[#4A4036]">Energy Saver</div>
+                    <div className="text-[9px] text-[#A8A096]">Misi Level 3</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-[#D2B48C]" />
+                Top Eco-Influencers
+              </h2>
             
             {leaderboard.length === 0 ? (
               <p className="text-sm text-[#A8A096] text-center py-8 border border-dashed border-[#E5E0D8] rounded-xl">Belum ada data interaksi.</p>
@@ -1932,6 +2493,18 @@ export default function App() {
         }
       `}} />
       
+      <EcoArcadeModal 
+        isOpen={isArcadeOpen} 
+        onClose={() => { setIsArcadeOpen(false); setActiveGameType(undefined); }} 
+        level={activeGameLevel}
+        gameType={activeGameType}
+        onComplete={handleMissionComplete}
+      />
+      <LevelUpOverlay 
+        isOpen={isLevelUpOpen} 
+        level={lastLevel} 
+        onClose={() => setIsLevelUpOpen(false)} 
+      />
       <BangEko />
     </div>
   );

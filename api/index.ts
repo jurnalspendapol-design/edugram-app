@@ -526,7 +526,7 @@ app.post("/api/posts/:postId/report", async (req, res) => {
 app.post("/api/posts", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { authorId, subbab, caption, imageUrl, isScientific, locationLat, locationLng } = req.body;
+    const { authorId, subbab, caption, imageUrl, isScientific, locationLat, locationLng, isMission, gameLevel } = req.body;
     
     if (!authorId || !caption) {
       return res.status(400).json({ error: "Data tidak lengkap" });
@@ -542,6 +542,8 @@ app.post("/api/posts", async (req, res) => {
       caption,
       image_url: imageUrl || "",
       is_scientific: isScientific,
+      is_mission: isMission,
+      game_level: gameLevel,
       created_at: createdAt,
       insightful: 0,
       ask: 0,
@@ -569,10 +571,22 @@ app.post("/api/posts", async (req, res) => {
 
     if (error) {
       console.error("Post creation error details:", error);
+      
+      // Fallback for mission columns
+      if (error.message.includes('is_mission') || error.code === '42703') {
+        console.warn("Mission columns missing, retrying without mission data...");
+        delete insertData.is_mission;
+        delete insertData.game_level;
+        const retry = await supabase.from('posts').insert([insertData]);
+        if (!retry.error) {
+          return res.json({ success: true, id, user: null });
+        }
+      }
+
       return res.status(500).json({ 
         error: "Gagal membuat postingan: " + error.message,
         details: error.details,
-        hint: "Jika error terkait 'location_lat', jalankan SQL ini di Supabase: ALTER TABLE posts ADD COLUMN location_lat FLOAT8; ALTER TABLE posts ADD COLUMN location_lng FLOAT8;"
+        hint: "Jika error terkait 'is_mission', jalankan SQL ini di Supabase: ALTER TABLE posts ADD COLUMN is_mission BOOLEAN DEFAULT FALSE; ALTER TABLE posts ADD COLUMN game_level INTEGER DEFAULT 1;"
       });
     }
 
@@ -772,6 +786,46 @@ app.post("/api/posts/:id/interact", async (req, res) => {
     }
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+  }
+});
+
+// Mission Complete
+app.post("/api/missions/complete", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { userId, postId, xp } = req.body;
+
+    if (!userId) return res.status(400).json({ error: "Data tidak lengkap" });
+
+    // Add XP to student
+    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, xp').eq('id', userId).single();
+    
+    if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
+
+    const currentXp = (user as any).xp || 0;
+    const xpToAdd = xp || 200;
+    const newXp = currentXp + xpToAdd;
+
+    await supabase.from('users').update({ xp: newXp }).eq('id', userId);
+
+    const { streak, lastPostDate } = await getUserStreakInfo(userId, supabase);
+
+    res.json({ 
+      success: true, 
+      user: {
+        id: user.id,
+        username: user.username,
+        fullName: user.full_name,
+        className: user.class_name,
+        studentNumber: user.student_number,
+        role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
+        xp: newXp,
+        streak,
+        lastPostDate
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
   }
 });
 
