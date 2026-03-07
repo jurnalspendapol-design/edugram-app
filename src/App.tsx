@@ -1104,7 +1104,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
             )}
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };
@@ -1947,7 +1947,7 @@ export default function App() {
         <div className="lg:col-span-2 space-y-6">
           <DailyQuestBanner />
           {/* Create Post Form */}
-              <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">
                 <form onSubmit={handlePost} className="space-y-4">
                   <div className="flex gap-4">
                     <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold shrink-0">
@@ -2481,7 +2481,7 @@ export default function App() {
             </div>
           </div>
         )}
-
+      
       </main>
 
       {/* Add custom animation for particles */}
@@ -2508,4 +2508,4 @@ export default function App() {
       <BangEko />
     </div>
   );
-}
+};
