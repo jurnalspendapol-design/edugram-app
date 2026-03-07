@@ -8,6 +8,7 @@ import ReactMarkdown from 'react-markdown';
 import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
+import { useMap } from 'react-leaflet';
 
 // Fix Leaflet default icon issue
 import 'leaflet/dist/leaflet.css';
@@ -200,9 +201,23 @@ const BangEko = () => {
     </div>
   );
 };
+const ChangeView = ({ center, zoom }: { center: [number, number], zoom: number }) => {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, zoom);
+  }, [center, zoom, map]);
+  return null;
+};
+
 const EcoMap = ({ posts }: { posts: Post[] }) => {
-  const mapPosts = posts.filter(p => p.locationLat && p.locationLng);
+  const mapPosts = posts.filter(p => p.locationLat != null && p.locationLng != null);
   
+  // Default center if no posts with location
+  const defaultCenter: [number, number] = [-6.2, 106.8];
+  const center: [number, number] = mapPosts.length > 0 
+    ? [mapPosts[0].locationLat!, mapPosts[0].locationLng!] 
+    : defaultCenter;
+
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden mb-6">
       <div className="p-4 border-b border-[#E5E0D8] flex items-center justify-between">
@@ -223,11 +238,12 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
       </div>
       <div id="map" className="h-[350px] w-full z-0">
         <MapContainer 
-          center={[-6.2, 106.8]} 
+          center={center} 
           zoom={11} 
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom={false}
         >
+          <ChangeView center={center} zoom={11} />
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -1177,6 +1193,7 @@ export default function App() {
   const [caption, setCaption] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isLocationEnabled, setIsLocationEnabled] = useState(false);
+  const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
 
   // Load user from localStorage
   useEffect(() => {
@@ -1293,6 +1310,31 @@ export default function App() {
     }
   };
 
+  const handleLocationToggle = () => {
+    if (!isLocationEnabled) {
+      if ("geolocation" in navigator) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            setUserCoords({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            });
+            setIsLocationEnabled(true);
+          },
+          (error) => {
+            console.error("Error getting location:", error);
+            alert("Gagal mendapatkan lokasi. Pastikan izin lokasi aktif.");
+          }
+        );
+      } else {
+        alert("Browser Anda tidak mendukung fitur lokasi.");
+      }
+    } else {
+      setIsLocationEnabled(false);
+      setUserCoords(null);
+    }
+  };
+
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser || !caption.trim()) return;
@@ -1311,8 +1353,8 @@ export default function App() {
           caption,
           imageUrl,
           isScientific,
-          locationLat: isLocationEnabled ? -6.2 + (Math.random() * 0.1) : null, // Random around Jakarta for demo
-          locationLng: isLocationEnabled ? 106.8 + (Math.random() * 0.1) : null
+          locationLat: isLocationEnabled && userCoords ? userCoords.lat : null,
+          locationLng: isLocationEnabled && userCoords ? userCoords.lng : null
         })
       });
 
@@ -1325,6 +1367,7 @@ export default function App() {
         setCaption('');
         setImageUrl('');
         setIsLocationEnabled(false);
+        setUserCoords(null);
         fetchData(); // Refresh feed
       } else {
         const data = await res.json();
@@ -1500,7 +1543,7 @@ export default function App() {
                   <div className="flex items-center gap-3 w-full sm:w-auto">
                     <button
                       type="button"
-                      onClick={() => setIsLocationEnabled(!isLocationEnabled)}
+                      onClick={handleLocationToggle}
                       className={`p-2 rounded-full transition-all ${isLocationEnabled ? 'bg-[#8A9A5B] text-white shadow-md' : 'bg-[#F4F1EA] text-[#A8A096] border border-[#E5E0D8]'}`}
                       title={isLocationEnabled ? "Lokasi Aktif" : "Aktifkan Lokasi"}
                     >

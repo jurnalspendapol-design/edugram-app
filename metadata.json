@@ -1,5 +1,5 @@
 {
   "name": "EduGram: Eco-Influencer",
   "description": "Aplikasi edukasi interaktif untuk siswa SMP dengan fitur postingan, badge ilmiah, dan leaderboard.",
-  "requestFramePermissions": []
+  "requestFramePermissions": ["geolocation"]
 }
