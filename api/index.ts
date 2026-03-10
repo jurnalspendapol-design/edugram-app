@@ -102,23 +102,38 @@ app.post("/api/auth/register", async (req, res) => {
     
     const id = `${role.toUpperCase()}-${finalClassName}-${finalStudentNumber}-${Date.now()}`;
 
-    const { data, error } = await supabase
+    const insertPayload: any = { 
+      id, 
+      username, 
+      password, 
+      full_name: fullName, 
+      class_name: finalClassName, 
+      student_number: finalStudentNumber,
+      school_name: schoolName,
+      role,
+      created_at: new Date().toISOString()
+    };
+
+    let { data, error } = await supabase
       .from('users')
-      .insert([
-        { 
-          id, 
-          username, 
-          password, 
-          full_name: fullName, 
-          class_name: finalClassName, 
-          student_number: finalStudentNumber,
-          school_name: schoolName,
-          role,
-          created_at: new Date().toISOString()
-        }
-      ])
+      .insert([insertPayload])
       .select('id, username, full_name, class_name, student_number')
       .single();
+
+    // Fallback if role column is missing in DB
+    if (error && (error.message.includes('role') || error.code === '42703')) {
+      console.warn("Role column missing, retrying without role data...");
+      delete insertPayload.role;
+      
+      const retry = await supabase
+        .from('users')
+        .insert([insertPayload])
+        .select('id, username, full_name, class_name, student_number')
+        .single();
+      
+      error = retry.error;
+      data = retry.data;
+    }
 
     if (error) {
       if (error.code === '23505') { // Unique violation in Postgres
