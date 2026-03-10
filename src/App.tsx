@@ -110,6 +110,7 @@ interface UserStats {
   schoolName: string;
   xp: number;
   interactions: number;
+  role: 'student' | 'teacher';
 }
 
 const SCIENTIFIC_KEYWORDS = ['emisi', 'gas rumah kaca', 'limbah', 'biogas'];
@@ -701,226 +702,8 @@ const EcoArcadeModal = ({ isOpen, onClose, level, onComplete, gameType: initialG
   );
 };
 
-const AuthScreen = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => {
-  const [isLogin, setIsLogin] = useState(true);
-  
-  // Form states
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [className, setClassName] = useState('');
-  const [studentNumber, setStudentNumber] = useState('');
-  const [schoolName, setSchoolName] = useState('');
-  const [registrationCode, setRegistrationCode] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
 
-    try {
-      if (isLogin) {
-        if (!username || !password) {
-          setError('Username dan password harus diisi');
-          setLoading(false);
-          return;
-        }
-        
-        const res = await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password })
-        });
-        
-        const data = await res.json();
-        if (data.success) {
-          onLogin(data.user);
-        } else {
-          setError(data.error || 'Gagal login');
-        }
-      } else {
-        const isTeacher = registrationCode === 'whyedugram';
-        
-        if (!username || !password || !fullName || !schoolName) {
-          setError('Field wajib harus diisi');
-          setLoading(false);
-          return;
-        }
-
-        if (!isTeacher && (!className || !studentNumber)) {
-          setError('Siswa wajib mengisi kelas dan nomor absen');
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch('/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username, password, fullName, className, studentNumber, schoolName, registrationCode })
-        });
-        
-        const data = await res.json();
-        if (data.success) {
-          onLogin(data.user);
-        } else {
-          setError(data.error || 'Gagal mendaftar');
-        }
-      }
-    } catch (err) {
-      setError('Terjadi kesalahan jaringan');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-[#F4F1EA] flex items-center justify-center p-4 font-sans text-[#4A4036] selection:bg-[#8A9A5B] selection:text-white">
-      <div className="bg-white max-w-md w-full rounded-3xl shadow-xl border border-[#E5E0D8] overflow-hidden">
-        <div className="bg-[#8A9A5B] p-8 text-center text-white relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-full opacity-10 pointer-events-none">
-            <Leaf className="w-32 h-32 absolute -top-10 -left-10 transform -rotate-45" />
-            <Leaf className="w-24 h-24 absolute bottom-0 right-0 transform rotate-45" />
-          </div>
-          <div className="relative z-10 flex flex-col items-center">
-            <div className="w-16 h-16 bg-white/20 rounded-2xl backdrop-blur-sm flex items-center justify-center mb-4 shadow-inner">
-              <Leaf className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">EduGram</h1>
-            <p className="text-[#E5E0D8] text-sm font-medium">Eco-Influencer Platform</p>
-          </div>
-        </div>
-        
-        <div className="p-8">
-          <div className="text-center mb-6">
-            <h2 className="text-xl font-bold mb-2">{isLogin ? 'Selamat Datang Kembali! 👋' : 'Buat Akun Baru 🌱'}</h2>
-            <p className="text-sm text-[#A8A096]">
-              {isLogin ? 'Silakan masuk untuk melanjutkan.' : 'Isi data diri kamu untuk mulai berbagi inspirasi lingkungan.'}
-            </p>
-          </div>
-
-          {error && (
-            <div className="bg-red-50 text-red-600 text-sm p-3 rounded-xl mb-4 text-center border border-red-100">
-              {error}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Username</label>
-              <input
-                type="text"
-                placeholder="Username (tanpa spasi)"
-                value={username}
-                onChange={(e) => setUsername(e.target.value.replace(/\s/g, ''))}
-                className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
-                required
-              />
-            </div>
-            
-            <div>
-              <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Password</label>
-              <input
-                type="password"
-                placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
-                required
-              />
-            </div>
-
-            {!isLogin && (
-              <>
-                <div>
-                  <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Nama Lengkap</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: Budi Santoso"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
-                    required
-                  />
-                </div>
-                
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-bold text-[#4A4036] mb-1.5">
-                      Kelas {registrationCode === 'whyedugram' && <span className="text-[#A8A096] font-normal">(Opsional)</span>}
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Contoh: 7A"
-                      value={className}
-                      onChange={(e) => setClassName(e.target.value)}
-                      className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow uppercase"
-                      required={registrationCode !== 'whyedugram'}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-bold text-[#4A4036] mb-1.5">
-                      No. Absen {registrationCode === 'whyedugram' && <span className="text-[#A8A096] font-normal">(Opsional)</span>}
-                    </label>
-                    <input
-                      type="number"
-                      placeholder="Contoh: 12"
-                      value={studentNumber}
-                      onChange={(e) => setStudentNumber(e.target.value)}
-                      className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
-                      min="1"
-                      required={registrationCode !== 'whyedugram'}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Asal Sekolah</label>
-                  <input
-                    type="text"
-                    placeholder="Contoh: SMP Negeri 1 Jakarta"
-                    value={schoolName}
-                    onChange={(e) => setSchoolName(e.target.value)}
-                    className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-bold text-[#4A4036] mb-1.5">Kode Registrasi (Opsional untuk Guru)</label>
-                  <input
-                    type="text"
-                    placeholder="Masukkan kode jika guru"
-                    value={registrationCode}
-                    onChange={(e) => setRegistrationCode(e.target.value)}
-                    className="w-full bg-[#F4F1EA] border border-[#E5E0D8] rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] transition-shadow"
-                  />
-                </div>
-              </>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white font-bold py-3.5 rounded-xl transition-colors shadow-md hover:shadow-lg flex items-center justify-center gap-2 mt-4 disabled:opacity-70"
-            >
-              <span>{loading ? 'Memproses...' : (isLogin ? 'Masuk' : 'Daftar & Mulai')}</span>
-              {!loading && <Sparkles className="w-5 h-5" />}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <button 
-              onClick={() => { setIsLogin(!isLogin); setError(''); }}
-              className="text-sm text-[#8A9A5B] font-bold hover:underline"
-            >
-              {isLogin ? 'Belum punya akun? Daftar di sini' : 'Sudah punya akun? Masuk di sini'}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
 
 // --- Profile Page Component ---
 const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, currentUser: UserProfile, onBack: () => void }) => {
@@ -2367,8 +2150,25 @@ const GlobalSearch = ({
 };
 
 // --- Main App Component ---
+const GUEST_USER: UserProfile = {
+  id: 'guest',
+  username: 'guest',
+  fullName: 'Tamu',
+  className: 'Guest',
+  studentNumber: '0',
+  schoolName: 'Guest School',
+  profilePictureUrl: '',
+  bio: 'Selamat datang!',
+  role: 'student',
+  xp: 0,
+  interactions: 0,
+  streak: 0,
+  followersCount: 0,
+  followingCount: 0
+};
+
 export default function App() {
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_USER);
   const [posts, setPosts] = useState<Post[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
   const [view, setView] = useState<'feed' | 'profile' | 'groups'>('feed');
@@ -2708,10 +2508,7 @@ export default function App() {
     }
   };
 
-  // If not logged in, show Auth Screen
-  if (!currentUser) {
-    return <AuthScreen onLogin={handleLogin} />;
-  }
+
 
   if (view === 'profile') {
     return <ProfilePage user={selectedUserForProfile || currentUser} currentUser={currentUser} onBack={() => { setView('feed'); setSelectedUserForProfile(null); }} />;
@@ -2775,9 +2572,9 @@ export default function App() {
             >
               <MessageCircleQuestion className="w-5 h-5" />
             </button>
-            <button onClick={() => setView('feed')} className={`text-sm font-bold ${view === 'feed' ? 'text-white' : 'text-white/70'}`}>Feed</button>
-            <button onClick={() => setView('groups')} className={`text-sm font-bold ${view === 'groups' ? 'text-white' : 'text-white/70'}`}>Grup</button>
-            <button onClick={() => setView('profile')} className={`text-sm font-bold ${view === 'profile' ? 'text-white' : 'text-white/70'}`}>Profil</button>
+            <button onClick={() => setView('feed')} className={`text-sm font-bold ${(view as string) === 'feed' ? 'text-white' : 'text-white/70'}`}>Feed</button>
+            <button onClick={() => setView('groups')} className={`text-sm font-bold ${(view as string) === 'groups' ? 'text-white' : 'text-white/70'}`}>Grup</button>
+            <button onClick={() => setView('profile')} className={`text-sm font-bold ${(view as string) === 'profile' ? 'text-white' : 'text-white/70'}`}>Profil</button>
             <div className="w-px h-6 bg-[#8A9A5B] mx-2"></div>
             <button 
               onClick={() => setView('profile')}
