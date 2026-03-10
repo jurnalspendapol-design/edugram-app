@@ -1199,7 +1199,7 @@ app.get("/api/search", async (req, res) => {
     const { data: users } = await supabase
       .from('users')
       .select('id, username, full_name, profile_picture_url, role')
-      .or(`full_name.ilike.%${query}%,username.ilike.%${query}%`)
+      .or(`full_name.ilike.%${q}%,username.ilike.%${q}%`)
       .limit(10);
 
     // Search posts

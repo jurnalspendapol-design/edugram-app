@@ -1133,7 +1133,9 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
               )}
             </div>
             <p className="text-[#A8A096] font-medium mb-1">@{profileData?.username}</p>
-            <p className="text-sm text-[#8A9A5B] font-bold mb-4">{profileData?.schoolName}</p>
+            <p className="text-sm text-[#8A9A5B] font-bold mb-4">
+              {profileData?.role === 'teacher' ? 'Guru' : profileData?.schoolName}
+            </p>
 
             {isEditing ? (
               <div className="mb-6 px-4">
@@ -1184,16 +1186,18 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 mb-8">
-              <div className="bg-[#F4F1EA] p-4 rounded-2xl border border-[#E5E0D8]">
-                <div className="text-[#A8A096] text-xs font-bold uppercase tracking-wider mb-1">Kelas</div>
-                <div className="text-xl font-bold text-[#8A9A5B]">{profileData?.className}</div>
+            {profileData?.role !== 'teacher' && (
+              <div className="grid grid-cols-2 gap-4 mb-8">
+                <div className="bg-[#F4F1EA] p-4 rounded-2xl border border-[#E5E0D8]">
+                  <div className="text-[#A8A096] text-xs font-bold uppercase tracking-wider mb-1">Kelas</div>
+                  <div className="text-xl font-bold text-[#8A9A5B]">{profileData?.className}</div>
+                </div>
+                <div className="bg-[#F4F1EA] p-4 rounded-2xl border border-[#E5E0D8]">
+                  <div className="text-[#A8A096] text-xs font-bold uppercase tracking-wider mb-1">No. Absen</div>
+                  <div className="text-xl font-bold text-[#8A9A5B]">{profileData?.studentNumber}</div>
+                </div>
               </div>
-              <div className="bg-[#F4F1EA] p-4 rounded-2xl border border-[#E5E0D8]">
-                <div className="text-[#A8A096] text-xs font-bold uppercase tracking-wider mb-1">No. Absen</div>
-                <div className="text-xl font-bold text-[#8A9A5B]">{profileData?.studentNumber}</div>
-              </div>
-            </div>
+            )}
 
             <div className="bg-gradient-to-br from-[#8A9A5B]/10 to-[#D2B48C]/10 p-6 rounded-2xl border border-[#8A9A5B]/20 flex items-center justify-around">
               <div className="text-center">
@@ -2780,7 +2784,9 @@ export default function App() {
               className="flex items-center gap-3 bg-[#7A8A4B] hover:bg-[#6A7A3B] px-4 py-1.5 rounded-full transition-colors cursor-pointer"
             >
               <span className="text-sm font-medium hidden sm:block">{currentUser.fullName}</span>
-              <span className="text-xs font-bold bg-[#8A9A5B] px-1.5 py-0.5 rounded text-white">{currentUser.className}</span>
+              <span className="text-xs font-bold bg-[#8A9A5B] px-1.5 py-0.5 rounded text-white">
+                {currentUser.role === 'teacher' ? 'Guru' : currentUser.className}
+              </span>
               <div className="w-1 h-1 bg-[#F4F1EA] rounded-full opacity-50 hidden sm:block"></div>
               <UserCircle2 className="w-5 h-5 text-[#D2B48C]" />
             </button>
@@ -2811,7 +2817,7 @@ export default function App() {
                       <div className="flex items-center gap-2">
                         <span className="text-lg font-bold">{currentUser.fullName}</span>
                         <span className="text-xs font-bold bg-[#F4F1EA] text-[#8A9A5B] px-2 py-1 rounded-md border border-[#E5E0D8]">
-                          Kelas {currentUser.className}
+                          {currentUser.role === 'teacher' ? 'Guru' : `Kelas ${currentUser.className}`}
                         </span>
                       </div>
                       <select
@@ -3271,7 +3277,9 @@ export default function App() {
                     <div className="flex-1 min-w-0">
                       <div className="font-bold text-sm truncate flex items-center gap-1">
                         {user.name}
-                        <span className="text-[9px] bg-[#E5E0D8] text-[#4A4036] px-1 rounded">{user.className}</span>
+                        <span className="text-[9px] bg-[#E5E0D8] text-[#4A4036] px-1 rounded">
+                          {user.role === 'teacher' ? 'Guru' : user.className}
+                        </span>
                         <span className="text-[9px] bg-[#8A9A5B] text-white px-1 rounded">{user.schoolName}</span>
                       </div>
                       <div className="text-xs text-[#A8A096]">{user.interactions} Interaksi</div>
