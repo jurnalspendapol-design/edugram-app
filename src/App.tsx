@@ -2695,6 +2695,18 @@ export default function App() {
                         <Gamepad2 className="w-4 h-4 text-[#8A9A5B]" />
                         <span className="text-sm font-bold text-[#8A9A5B]">Game Master Panel</span>
                       </div>
+                      <button
+                        onClick={async () => {
+                          if (confirm('Are you sure you want to delete all users?')) {
+                            await fetch('/api/delete-all-users');
+                            alert('All users deleted');
+                            window.location.reload();
+                          }
+                        }}
+                        className="bg-red-500 text-white p-2 rounded-lg text-xs font-bold hover:bg-red-600"
+                      >
+                        Delete All Users
+                      </button>
                       <label className="relative inline-flex items-center cursor-pointer">
                         <input 
                           type="checkbox" 

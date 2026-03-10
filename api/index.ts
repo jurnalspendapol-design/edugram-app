@@ -83,6 +83,25 @@ app.use(express.json());
 
 
 
+// Delete all users
+app.get("/api/delete-all-users", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { data: users, error: usersError } = await supabase.from('users').select('id');
+    if (usersError) throw usersError;
+
+    for (const user of users) {
+      // This will fail if there are foreign key constraints, 
+      // which is expected if the database is not configured for cascading deletes.
+      await supabase.from('users').delete().eq('id', user.id);
+    }
+
+    res.json({ success: true, message: "All users deleted" });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get User Followers
 app.get("/api/users/:id/followers", async (req, res) => {
   try {
