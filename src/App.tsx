@@ -930,14 +930,22 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   const [editBio, setEditBio] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
   const [health, setHealth] = useState(100);
+  const [followers, setFollowers] = useState<any[]>([]);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [activeTab, setActiveTab] = useState<'posts' | 'followers'>('posts');
 
   const fetchProfile = () => {
-    fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`)
-      .then(res => res.json())
-      .then(data => {
-        setProfileData(data);
-        setEditBio(data.bio || '');
-        setIsFollowing(data.isFollowing);
+    Promise.all([
+      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`).then(res => res.json()),
+      fetch(`/api/users/${user.id}/followers`).then(res => res.json()).catch(() => []),
+      fetch(`/api/posts?authorId=${user.id}`).then(res => res.json()).catch(() => [])
+    ])
+      .then(([profileRes, followersRes, postsRes]) => {
+        setProfileData(profileRes);
+        setEditBio(profileRes.bio || '');
+        setIsFollowing(profileRes.isFollowing);
+        setFollowers(Array.isArray(followersRes) ? followersRes : []);
+        setPosts(Array.isArray(postsRes) ? postsRes : []);
         setLoading(false);
       })
       .catch(err => {
@@ -1186,6 +1194,85 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
               </div>
             )}
           </div>
+        </div>
+
+        {/* Tabs for Posts and Followers */}
+        <div className="mt-8">
+          <div className="flex gap-4 mb-6 border-b border-[#E5E0D8]">
+            <button 
+              onClick={() => setActiveTab('posts')}
+              className={`pb-3 font-bold px-2 ${activeTab === 'posts' ? 'text-[#8A9A5B] border-b-2 border-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'}`}
+            >
+              Postingan
+            </button>
+            <button 
+              onClick={() => setActiveTab('followers')}
+              className={`pb-3 font-bold px-2 ${activeTab === 'followers' ? 'text-[#8A9A5B] border-b-2 border-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'}`}
+            >
+              Pengikut
+            </button>
+          </div>
+
+          {activeTab === 'posts' && (
+            <div className="space-y-6">
+              {posts.length === 0 ? (
+                <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-8 text-center">
+                  <p className="text-[#A8A096]">Belum ada postingan.</p>
+                </div>
+              ) : (
+                posts.map(post => (
+                  <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden">
+                    <div className="p-4 border-b border-[#E5E0D8] flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold">
+                          {post.authorName?.charAt(0).toUpperCase() || '?'}
+                        </div>
+                        <div>
+                          <div className="font-bold text-[#4A4036]">{post.authorName}</div>
+                          <div className="text-xs text-[#A8A096]">
+                            {new Date(post.timestamp).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}
+                          </div>
+                        </div>
+                      </div>
+                      <span className="text-xs font-bold text-[#8A9A5B] bg-[#F4F1EA] px-3 py-1 rounded-full border border-[#E5E0D8]">
+                        {post.subbab}
+                      </span>
+                    </div>
+                    {post.imageUrl && (
+                      <img src={post.imageUrl} alt="Post" className="w-full h-64 object-cover" referrerPolicy="no-referrer" />
+                    )}
+                    <div className="p-4">
+                      <p className="text-[#4A4036] whitespace-pre-wrap">{post.caption}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {activeTab === 'followers' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden">
+              {followers.length === 0 ? (
+                <div className="p-8 text-center text-[#A8A096]">
+                  Belum ada pengikut.
+                </div>
+              ) : (
+                <div className="divide-y divide-[#E5E0D8]">
+                  {followers.map(follower => (
+                    <div key={follower.id} className="p-4 flex items-center gap-4 hover:bg-[#F4F1EA] transition-colors">
+                      <div className="w-12 h-12 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold text-lg shrink-0">
+                        {follower.fullName?.charAt(0).toUpperCase() || '?'}
+                      </div>
+                      <div>
+                        <div className="font-bold text-[#4A4036]">{follower.fullName}</div>
+                        <div className="text-sm text-[#A8A096]">@{follower.username}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </main>
     </div>
@@ -1687,7 +1774,7 @@ const TutorialModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => vo
 };
 
 // --- Groups View Component ---
-const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack }: { user: UserProfile, initialGroupId?: string | null, onClearInitialGroup?: () => void, onBack: () => void }) => {
+const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderboard }: { user: UserProfile, initialGroupId?: string | null, onClearInitialGroup?: () => void, onBack: () => void, leaderboard: UserStats[] }) => {
   const [groups, setGroups] = useState<any[]>([]);
   const [isCreating, setIsCreating] = useState(false);
   const [newGroup, setNewGroup] = useState({ name: '', description: '', type: 'school', privacy: 'public' });
@@ -1882,6 +1969,33 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack }: { use
               {groupDetails.members.filter((m: any) => m.status === 'approved').length} Anggota
             </div>
           </div>
+
+          {/* Class Forest Goal (Moved from Feed) */}
+          {groupDetails.type === 'school' && (
+            <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 relative overflow-hidden mb-6">
+              <div className="absolute top-0 right-0 w-32 h-32 bg-[#8A9A5B] opacity-5 rounded-full -mr-10 -mt-10 pointer-events-none"></div>
+              <div className="flex items-center justify-between mb-3 relative z-10">
+                <h2 className="font-bold text-lg text-[#4A4036] flex items-center gap-2">
+                  <Leaf className="w-5 h-5 text-[#8A9A5B]" />
+                  Class Forest Goal
+                </h2>
+                <span className="text-sm font-bold text-[#8A9A5B] bg-[#F4F1EA] px-3 py-1 rounded-full border border-[#E5E0D8]">
+                  {leaderboard.reduce((sum, u) => sum + u.xp, 0)} / 5000 XP
+                </span>
+              </div>
+              <p className="text-sm text-[#A8A096] mb-4 relative z-10">
+                Misi Kelas: Kumpulkan 5000 XP untuk menanam hutan virtual!
+              </p>
+              <div className="w-full h-4 bg-[#F4F1EA] rounded-full overflow-hidden border border-[#E5E0D8] relative z-10">
+                <div 
+                  className="h-full bg-gradient-to-r from-[#8A9A5B] to-[#7A8A4B] transition-all duration-1000 relative"
+                  style={{ width: `${Math.min(100, (leaderboard.reduce((sum, u) => sum + u.xp, 0) / 5000) * 100)}%` }}
+                >
+                  <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite] -skew-x-12"></div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {(isMember || isAdmin) && (
             <div className="flex gap-4 mb-6 border-b border-[#E5E0D8]">
@@ -2542,7 +2656,7 @@ export default function App() {
   }
 
   if (view === 'groups') {
-    return <GroupsView user={currentUser} initialGroupId={initialGroupId} onClearInitialGroup={() => setInitialGroupId(null)} onBack={() => { setView('feed'); setInitialGroupId(null); }} />;
+    return <GroupsView user={currentUser} initialGroupId={initialGroupId} onClearInitialGroup={() => setInitialGroupId(null)} onBack={() => { setView('feed'); setInitialGroupId(null); }} leaderboard={leaderboard} />;
   }
 
   return (
@@ -2627,31 +2741,6 @@ export default function App() {
         
         {/* Left Column: Feed & Input */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Class Forest Goal */}
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#8A9A5B] opacity-5 rounded-full -mr-10 -mt-10 pointer-events-none"></div>
-            <div className="flex items-center justify-between mb-3 relative z-10">
-              <h2 className="font-bold text-lg text-[#4A4036] flex items-center gap-2">
-                <Leaf className="w-5 h-5 text-[#8A9A5B]" />
-                Class Forest Goal
-              </h2>
-              <span className="text-sm font-bold text-[#8A9A5B] bg-[#F4F1EA] px-3 py-1 rounded-full border border-[#E5E0D8]">
-                {leaderboard.reduce((sum, u) => sum + u.xp, 0)} / 5000 XP
-              </span>
-            </div>
-            <p className="text-sm text-[#A8A096] mb-4 relative z-10">
-              Misi Kelas: Kumpulkan 5000 XP untuk menanam hutan virtual!
-            </p>
-            <div className="w-full h-4 bg-[#F4F1EA] rounded-full overflow-hidden border border-[#E5E0D8] relative z-10">
-              <div 
-                className="h-full bg-gradient-to-r from-[#8A9A5B] to-[#7A8A4B] transition-all duration-1000 relative"
-                style={{ width: `${Math.min(100, (leaderboard.reduce((sum, u) => sum + u.xp, 0) / 5000) * 100)}%` }}
-              >
-                <div className="absolute inset-0 bg-white/20 w-full animate-[shimmer_2s_infinite] -skew-x-12"></div>
-              </div>
-            </div>
-          </div>
-
           <DailyQuestBanner />
           {/* Create Post Form */}
           <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5">

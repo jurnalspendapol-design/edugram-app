@@ -202,6 +202,43 @@ app.post("/api/auth/login", async (req, res) => {
   }
 });
 
+// Get User Followers
+app.get("/api/users/:id/followers", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { data: followers, error } = await supabase
+      .from('follows')
+      .select(`
+        follower_id,
+        users!follows_follower_id_fkey (
+          id,
+          full_name,
+          username,
+          class_name,
+          role
+        )
+      `)
+      .eq('following_id', req.params.id);
+
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ error: "Gagal mengambil pengikut" });
+    }
+
+    const formattedFollowers = followers.map((f: any) => ({
+      id: f.users?.id,
+      fullName: f.users?.full_name,
+      username: f.users?.username,
+      className: f.users?.class_name,
+      role: f.users?.role
+    })).filter((f: any) => f.id);
+
+    res.json(formattedFollowers);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get User Profile
 app.get("/api/users/:id", async (req, res) => {
   try {
@@ -557,8 +594,9 @@ app.get("/api/posts", async (req, res) => {
   try {
     const supabase = getSupabase();
     const userId = req.query.userId as string;
+    const authorId = req.query.authorId as string;
     
-    const { data: posts, error } = await supabase
+    let query = supabase
       .from('posts')
       .select(`
         *,
@@ -569,6 +607,12 @@ app.get("/api/posts", async (req, res) => {
         )
       `)
       .order('created_at', { ascending: false });
+
+    if (authorId) {
+      query = query.eq('author_id', authorId);
+    }
+      
+    const { data: posts, error } = await query;
       
     if (error) {
       return res.status(500).json({ error: "Gagal mengambil postingan" });
