@@ -255,15 +255,14 @@ app.get("/api/users/:id", async (req, res) => {
       return res.status(404).json({ error: "User tidak ditemukan" });
     }
 
-    const { data: userPosts } = await supabase
-      .from('posts')
-      .select('insightful, ask, support, is_scientific')
-      .eq('author_id', user.id);
-      
-    const { data: userComments } = await supabase
-      .from('comments')
-      .select('id')
-      .eq('author_id', user.id);
+    // Fetch user stats in parallel
+    const [postsResult, commentsResult] = await Promise.all([
+      supabase.from('posts').select('insightful, ask, support, is_scientific').eq('author_id', user.id),
+      supabase.from('comments').select('id').eq('author_id', user.id)
+    ]);
+    
+    const userPosts = postsResult.data;
+    const userComments = commentsResult.data;
 
     let totalInteractions = 0;
     let calculatedXp = 0;
@@ -618,24 +617,16 @@ app.get("/api/posts", async (req, res) => {
       return res.status(500).json({ error: "Gagal mengambil postingan" });
     }
 
-    // Fetch comment counts
-    let commentCounts: any[] = [];
-    try {
-      const { data } = await supabase.from('comments').select('post_id');
-      if (data) commentCounts = data;
-    } catch (e) {}
+    const postIds = posts.map(p => p.id);
+    
+    // Fetch comment counts and user interactions for these posts in parallel
+    const [commentResult, interactionResult] = await Promise.all([
+      supabase.from('comments').select('post_id').in('post_id', postIds),
+      userId ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds) : { data: [] }
+    ]);
 
-    // Fetch user interactions if userId provided
-    let userInteractions: any[] = [];
-    if (userId) {
-      try {
-        const { data } = await supabase
-          .from('interactions')
-          .select('post_id, type')
-          .eq('user_id', userId);
-        if (data) userInteractions = data;
-      } catch (e) {}
-    }
+    const commentCounts = commentResult.data || [];
+    const userInteractions = (interactionResult as any).data || [];
 
     const formattedPosts = posts.map(p => {
       const count = commentCounts.filter(c => c.post_id === p.id).length;
