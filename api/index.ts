@@ -84,65 +84,48 @@ app.use(express.json());
 app.post("/api/auth/register", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { username, password, fullName, className, studentNumber, schoolName, profilePictureUrl, registrationCode } = req.body;
+    const { username, password, fullName, className, studentNumber, schoolName, registrationCode } = req.body;
     
+    // Gunakan email dummy untuk Supabase Auth
+    const email = `${username}@edugram.com`;
+
+    // Daftar ke Supabase Auth
+    const { data: authData, error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (authError) {
+      return res.status(400).json({ error: "Gagal mendaftar: " + authError.message });
+    }
+
+    const userId = authData.user?.id;
+    if (!userId) return res.status(500).json({ error: "Gagal mendapatkan User ID" });
+
+    // Simpan data profil ke tabel public.users
     const isTeacher = registrationCode === 'whyedugram';
-    
-    if (!username || !password || !fullName || !schoolName) {
-      return res.status(400).json({ error: "Username, password, nama, dan sekolah wajib diisi" });
-    }
-
-    if (!isTeacher && (!className || !studentNumber)) {
-      return res.status(400).json({ error: "Siswa wajib mengisi kelas dan nomor absen" });
-    }
-
     const role = isTeacher ? 'teacher' : 'student';
     const finalClassName = className ? className.toUpperCase() : "GURU";
     const finalStudentNumber = studentNumber ? parseInt(studentNumber) : 0;
-    
-    const id = `${role.toUpperCase()}-${finalClassName}-${finalStudentNumber}-${Date.now()}`;
 
-    const insertPayload: any = { 
-      id, 
-      username, 
-      password, 
-      full_name: fullName, 
-      class_name: finalClassName, 
-      student_number: finalStudentNumber,
-      school_name: schoolName,
-      role,
-      created_at: new Date().toISOString()
-    };
-
-    let { data, error } = await supabase
+    const { error: dbError } = await supabase
       .from('users')
-      .insert([insertPayload])
-      .select('id, username, full_name, class_name, student_number')
-      .single();
+      .insert([{
+        id: userId, // Gunakan ID dari Supabase Auth
+        username,
+        full_name: fullName,
+        class_name: finalClassName,
+        student_number: finalStudentNumber,
+        school_name: schoolName,
+        role,
+        created_at: new Date().toISOString()
+      }]);
 
-    // Fallback if role column is missing in DB
-    if (error && (error.message.includes('role') || error.code === '42703')) {
-      console.warn("Role column missing, retrying without role data...");
-      delete insertPayload.role;
-      
-      const retry = await supabase
-        .from('users')
-        .insert([insertPayload])
-        .select('id, username, full_name, class_name, student_number')
-        .single();
-      
-      error = retry.error;
-      data = retry.data;
+    if (dbError) {
+      return res.status(500).json({ error: "Gagal menyimpan profil: " + dbError.message });
     }
 
-    if (error) {
-      if (error.code === '23505') { // Unique violation in Postgres
-        return res.status(400).json({ error: "Username sudah digunakan" });
-      }
-      return res.status(500).json({ error: "Gagal mendaftar: " + error.message });
-    }
-
-    res.json({ success: true, user: { id, username, fullName, className: className.toUpperCase(), studentNumber, schoolName, role, xp: 0, streak: 0, interactions: 0 } });
+    res.json({ success: true, user: { id: userId, username, fullName, className: finalClassName, studentNumber, schoolName, role, xp: 0, streak: 0, interactions: 0 } });
   } catch (error: any) {
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
@@ -158,18 +141,31 @@ app.post("/api/auth/login", async (req, res) => {
       return res.status(400).json({ error: "Username dan password harus diisi" });
     }
 
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, username, password, full_name, class_name, student_number')
-      .eq('username', username)
-      .eq('password', password)
-      .single();
+    // Login ke Supabase Auth
+    const email = `${username}@edugram.com`;
+    const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
 
-    if (error || !user) {
+    if (authError) {
       return res.status(401).json({ error: "Username atau password salah" });
     }
 
-    // Calculate interactions
+    const userId = authData.user?.id;
+
+    // Ambil data profil dari tabel public.users
+    const { data: user, error: dbError } = await supabase
+      .from('users')
+      .select('id, username, full_name, class_name, student_number, role, xp')
+      .eq('id', userId)
+      .single();
+
+    if (dbError || !user) {
+      return res.status(401).json({ error: "Data profil tidak ditemukan" });
+    }
+
+    // Hitung interaksi
     const { data: posts } = await supabase
       .from('posts')
       .select('insightful, ask, support')
@@ -190,8 +186,8 @@ app.post("/api/auth/login", async (req, res) => {
         fullName: user.full_name, 
         className: user.class_name, 
         studentNumber: user.student_number, 
-        role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
-        xp: (user as any).xp || 0,
+        role: user.role,
+        xp: user.xp || 0,
         interactions: totalInteractions,
         streak,
         lastPostDate
