@@ -928,11 +928,13 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   const [loading, setLoading] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
   const [editBio, setEditBio] = useState('');
+  const [editProfilePicture, setEditProfilePicture] = useState<File | null>(null);
   const [isFollowing, setIsFollowing] = useState(false);
   const [health, setHealth] = useState(100);
   const [followers, setFollowers] = useState<any[]>([]);
   const [posts, setPosts] = useState<Post[]>([]);
   const [activeTab, setActiveTab] = useState<'posts' | 'followers'>('posts');
+  const [isUploading, setIsUploading] = useState(false);
 
   const fetchProfile = () => {
     Promise.all([
@@ -983,18 +985,36 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   }, [user.id]);
 
   const handleUpdateProfile = async () => {
+    if (isUploading) return;
+    setIsUploading(true);
     try {
+      let profilePictureUrl = profileData?.profilePictureUrl || '';
+
+      if (editProfilePicture) {
+        const reader = new FileReader();
+        reader.readAsDataURL(editProfilePicture);
+        await new Promise<void>((resolve) => {
+          reader.onloadend = () => {
+            profilePictureUrl = reader.result as string;
+            resolve();
+          };
+        });
+      }
+
       const res = await fetch(`/api/users/${user.id}/profile`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ bio: editBio })
+        body: JSON.stringify({ bio: editBio, profilePictureUrl })
       });
       if (res.ok) {
         setIsEditing(false);
+        setEditProfilePicture(null);
         fetchProfile();
       }
     } catch (err) {
       console.error(err);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -1117,6 +1137,22 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
 
             {isEditing ? (
               <div className="mb-6 px-4">
+                <div className="mb-4">
+                  <label className="block text-sm font-bold text-[#4A4036] mb-2">Foto Profil</label>
+                  <input 
+                    type="file" 
+                    accept="image/*"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setEditProfilePicture(e.target.files[0]);
+                      }
+                    }}
+                    className="w-full text-sm text-[#A8A096] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#8A9A5B] file:text-white hover:file:bg-[#7A8A4B]"
+                  />
+                  {editProfilePicture && (
+                    <p className="text-xs text-[#8A9A5B] mt-1">Gambar dipilih: {editProfilePicture.name}</p>
+                  )}
+                </div>
                 <textarea 
                   value={editBio} 
                   onChange={(e) => setEditBio(e.target.value)}
@@ -1126,7 +1162,9 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
                 />
                 <div className="flex justify-center gap-2 mt-2">
                   <button onClick={() => setIsEditing(false)} className="px-4 py-1.5 text-xs font-bold text-gray-500">Batal</button>
-                  <button onClick={handleUpdateProfile} className="px-4 py-1.5 text-xs font-bold bg-[#8A9A5B] text-white rounded-lg">Simpan</button>
+                  <button onClick={handleUpdateProfile} disabled={isUploading} className="px-4 py-1.5 text-xs font-bold bg-[#8A9A5B] text-white rounded-lg disabled:opacity-50">
+                    {isUploading ? 'Menyimpan...' : 'Simpan'}
+                  </button>
                 </div>
               </div>
             ) : (
@@ -2366,6 +2404,8 @@ export default function App() {
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
   const [isMission, setIsMission] = useState(false);
   const [gameLevel, setGameLevel] = useState(1);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Load user from localStorage
   useEffect(() => {
@@ -2544,13 +2584,28 @@ export default function App() {
 
   const handlePost = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!currentUser || !caption.trim()) return;
+    if (!currentUser || !caption.trim() || isUploading) return;
+
+    setIsUploading(true);
 
     const isScientific = SCIENTIFIC_KEYWORDS.some(keyword => 
       caption.toLowerCase().includes(keyword)
     );
 
     try {
+      let finalImageUrl = imageUrl;
+
+      if (imageFile) {
+        const reader = new FileReader();
+        reader.readAsDataURL(imageFile);
+        await new Promise<void>((resolve) => {
+          reader.onloadend = () => {
+            finalImageUrl = reader.result as string;
+            resolve();
+          };
+        });
+      }
+
       const res = await fetch('/api/posts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -2558,7 +2613,7 @@ export default function App() {
           authorId: currentUser.id,
           subbab,
           caption,
-          imageUrl,
+          imageUrl: finalImageUrl,
           isScientific,
           isMission,
           gameLevel,
@@ -2586,6 +2641,7 @@ export default function App() {
         
         setCaption('');
         setImageUrl('');
+        setImageFile(null);
         setIsLocationEnabled(false);
         setUserCoords(null);
         setIsMission(false);
@@ -2602,6 +2658,8 @@ export default function App() {
     } catch (err) {
       console.error("Failed to post", err);
       alert('Terjadi kesalahan koneksi saat mengirim postingan');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -2779,15 +2837,51 @@ export default function App() {
                 />
                 
                 {/* Image URL Input */}
-                <div className="flex items-center gap-2 mt-2 bg-[#F4F1EA] rounded-lg px-3 py-2 border border-[#E5E0D8]">
-                  <ImageIcon className="w-4 h-4 text-[#A8A096]" />
-                  <input
-                    type="url"
-                    placeholder="Link gambar (opsional)"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    className="w-full bg-transparent text-sm focus:outline-none"
-                  />
+                <div className="flex flex-col gap-2 mt-2">
+                  <div className="flex items-center gap-2 bg-[#F4F1EA] rounded-lg px-3 py-2 border border-[#E5E0D8]">
+                    <ImageIcon className="w-4 h-4 text-[#A8A096]" />
+                    <input
+                      type="url"
+                      placeholder="Link gambar (opsional)"
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      className="w-full bg-transparent text-sm focus:outline-none"
+                      disabled={!!imageFile}
+                    />
+                  </div>
+                  
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-[#A8A096] font-bold uppercase">ATAU</span>
+                    <div className="h-px bg-[#E5E0D8] flex-1"></div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <label className={`cursor-pointer flex items-center gap-2 px-4 py-2 rounded-lg border border-[#E5E0D8] text-sm font-bold transition-colors ${imageFile ? 'bg-[#8A9A5B] text-white border-[#8A9A5B]' : 'bg-[#F4F1EA] text-[#4A4036] hover:bg-[#E5E0D8]'}`}>
+                      <ImageIcon className="w-4 h-4" />
+                      {imageFile ? 'Gambar Dipilih' : 'Unggah Gambar'}
+                      <input 
+                        type="file" 
+                        accept="image/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          if (e.target.files && e.target.files[0]) {
+                            setImageFile(e.target.files[0]);
+                            setImageUrl(''); // Clear URL if file is selected
+                          }
+                        }}
+                        disabled={!!imageUrl}
+                      />
+                    </label>
+                    {imageFile && (
+                      <button 
+                        type="button" 
+                        onClick={() => setImageFile(null)}
+                        className="text-xs text-red-500 hover:text-red-700 font-bold"
+                      >
+                        Hapus
+                      </button>
+                    )}
+                  </div>
                 </div>
 
                 {/* Game Master Panel (Teacher Only) */}
