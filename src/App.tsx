@@ -857,7 +857,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
                   />
                 ) : (
                   <div className={`w-full h-full rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-3xl font-bold transition-all duration-500 ${health < 30 ? 'grayscale' : ''}`}>
-                    {profileData?.fullName?.charAt(0).toUpperCase() || '?'}
+                    {profileData?.fullName?.charAt(0)?.toUpperCase() || '?'}
                   </div>
                 )}
               </div>
@@ -1050,7 +1050,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
                     <div className="p-4 border-b border-[#E5E0D8] flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold">
-                          {post.authorName?.charAt(0).toUpperCase() || '?'}
+                          {post.authorName?.charAt(0)?.toUpperCase() || '?'}
                         </div>
                         <div>
                           <div className="font-bold text-[#4A4036]">{post.authorName}</div>
@@ -1086,7 +1086,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
                   {followers.map(follower => (
                     <div key={follower.id} className="p-4 flex items-center gap-4 hover:bg-[#F4F1EA] transition-colors">
                       <div className="w-12 h-12 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold text-lg shrink-0">
-                        {follower.fullName?.charAt(0).toUpperCase() || '?'}
+                        {follower.fullName?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       <div>
                         <div className="font-bold text-[#4A4036]">{follower.fullName}</div>
@@ -1412,7 +1412,7 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
         {comments.map(comment => (
           <div key={comment.id} className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {(comment.authorName || 'U').charAt(0).toUpperCase()}
+              {(comment.authorName || 'U').charAt(0)?.toUpperCase()}
             </div>
             <div className="flex-1 bg-[#F4F1EA] rounded-2xl px-4 py-2">
               <div className="flex items-center gap-2 mb-0.5">
@@ -1429,7 +1429,7 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
 
       <form onSubmit={handleSubmit} className="flex gap-3 items-center">
         <div className="w-8 h-8 rounded-full bg-[#8A9A5B] flex items-center justify-center text-white text-xs font-bold shrink-0">
-          {currentUser.fullName.charAt(0).toUpperCase()}
+          {currentUser.fullName?.charAt(0)?.toUpperCase() || '?'}
         </div>
         <div className="flex-1 relative">
           <input
@@ -1909,7 +1909,7 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
                   <div key={m.userId} className="flex justify-between items-center p-3 border border-[#E5E0D8] rounded-xl">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold">
-                        {m.user.fullName.charAt(0).toUpperCase()}
+                        {m.user.fullName?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       <div>
                         <div className="font-bold flex items-center gap-2">
@@ -2099,7 +2099,7 @@ const GlobalSearch = ({
                       className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer flex items-center gap-3"
                     >
                       <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold text-xs">
-                        {u.full_name.charAt(0).toUpperCase()}
+                        {u.full_name?.charAt(0)?.toUpperCase() || '?'}
                       </div>
                       <div>
                         <div className="text-sm font-bold text-[#4A4036]">{u.full_name}</div>
@@ -2608,7 +2608,7 @@ export default function App() {
                 <form onSubmit={handlePost} className="space-y-4">
                   <div className="flex gap-4">
                     <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold shrink-0">
-                      {currentUser.fullName.charAt(0).toUpperCase()}
+                      {currentUser.fullName?.charAt(0)?.toUpperCase() || '?'}
                     </div>
                     <div className="flex-1 space-y-3">
                       <div className="flex items-center gap-2">
@@ -2781,7 +2781,7 @@ export default function App() {
                           setSelectedUserForProfile({ id: post.authorId, fullName: post.authorName, className: post.authorClass } as any);
                           setView('profile');
                         }}>
-                          {post.authorName.charAt(0).toUpperCase()}
+                          {post.authorName?.charAt(0)?.toUpperCase() || '?'}
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
