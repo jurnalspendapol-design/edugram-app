@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -1444,70 +1444,6 @@ const ReportModal = ({
 };
 
 // --- Students View Component ---
-const StudentsView = ({ schoolName, teacherId, onBack }: { schoolName: string, teacherId: string, onBack: () => void }) => {
-  const [students, setStudents] = useState<any[]>([]);
-
-  useEffect(() => {
-    fetch(`/api/students/${schoolName}`)
-      .then(res => res.json())
-      .then(setStudents);
-  }, [schoolName]);
-
-  const deleteStudent = async (studentId: string) => {
-    if (!confirm('Yakin ingin menghapus siswa ini?')) return;
-    const res = await fetch(`/api/users/${studentId}`, {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ teacherId })
-    });
-    if (res.ok) setStudents(students.filter(s => s.id !== studentId));
-  };
-
-  return (
-    <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans pb-20">
-      <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center">
-          <button onClick={onBack} className="flex items-center gap-2 hover:bg-[#7A8A4B] px-3 py-1.5 rounded-full transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-            <span className="font-medium">Kembali</span>
-          </button>
-          <div className="flex-1 text-center font-bold text-lg pr-10">Manajemen Siswa</div>
-        </div>
-      </header>
-
-      <main className="max-w-2xl mx-auto px-4 py-8">
-        <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8] shadow-sm">
-          <h2 className="text-xl font-bold mb-4">Daftar Siswa - {schoolName}</h2>
-          {students.length === 0 ? (
-            <p className="text-center text-gray-500 py-8">Belum ada siswa yang terdaftar.</p>
-          ) : (
-            <div className="space-y-3">
-              {students.map(s => (
-                <div key={s.id} className="flex justify-between items-center p-4 border rounded-xl hover:bg-gray-50 transition-colors">
-                  <div>
-                    <div className="font-bold text-lg">{s.full_name}</div>
-                    <div className="text-sm text-gray-500 flex items-center gap-2 mt-1">
-                      <span className="bg-[#E5E0D8] px-2 py-0.5 rounded text-xs font-bold text-[#4A4036]">{s.class_name}</span>
-                      <span>Absen: {s.student_number}</span>
-                    </div>
-                  </div>
-                  <button 
-                    onClick={() => deleteStudent(s.id)} 
-                    className="text-red-500 hover:text-red-700 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                    title="Hapus Siswa"
-                  >
-                    <Trash2 className="w-5 h-5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
-    </div>
-  );
-};
-
 // --- Comment Section Component ---
 const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: string, currentUser: UserProfile, onCommentAdded: () => void }) => {
   const [comments, setComments] = useState<Comment[]>([]);
@@ -1750,12 +1686,536 @@ const TutorialModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => vo
   );
 };
 
+// --- Groups View Component ---
+const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack }: { user: UserProfile, initialGroupId?: string | null, onClearInitialGroup?: () => void, onBack: () => void }) => {
+  const [groups, setGroups] = useState<any[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
+  const [newGroup, setNewGroup] = useState({ name: '', description: '', type: 'school', privacy: 'public' });
+  const [selectedGroup, setSelectedGroup] = useState<any | null>(null);
+  const [groupDetails, setGroupDetails] = useState<any | null>(null);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [newMessageText, setNewMessageText] = useState('');
+  const [activeTab, setActiveTab] = useState<'chat' | 'members'>('chat');
+
+  const fetchGroups = async () => {
+    try {
+      const res = await fetch(`/api/groups?userId=${user.id}`);
+      const data = await res.json();
+      setGroups(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    if (initialGroupId && groups.length > 0) {
+      const group = groups.find((g: any) => g.id === initialGroupId);
+      if (group) {
+        setSelectedGroup(group);
+        if (onClearInitialGroup) onClearInitialGroup();
+      }
+    }
+  }, [initialGroupId, groups, onClearInitialGroup]);
+
+  const fetchGroupDetails = async (groupId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}`);
+      const data = await res.json();
+      setGroupDetails(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const fetchMessages = async (groupId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/messages`);
+      const data = await res.json();
+      setMessages(data);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    fetchGroups();
+  }, []);
+
+  useEffect(() => {
+    if (selectedGroup) {
+      fetchGroupDetails(selectedGroup.id);
+      fetchMessages(selectedGroup.id);
+      const interval = setInterval(() => fetchMessages(selectedGroup.id), 5000); // Poll for new messages
+      return () => clearInterval(interval);
+    } else {
+      setGroupDetails(null);
+      setMessages([]);
+    }
+  }, [selectedGroup]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMessageText.trim() || !selectedGroup) return;
+    
+    try {
+      const res = await fetch(`/api/groups/${selectedGroup.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          fullName: user.fullName,
+          username: user.username,
+          content: newMessageText
+        })
+      });
+      if (res.ok) {
+        setNewMessageText('');
+        fetchMessages(selectedGroup.id);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleCreateGroup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const res = await fetch('/api/groups', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...newGroup,
+          adminId: user.id,
+          adminName: user.fullName,
+          adminUsername: user.username
+        })
+      });
+      if (res.ok) {
+        setIsCreating(false);
+        setNewGroup({ name: '', description: '', type: 'school', privacy: 'public' });
+        fetchGroups();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleJoinGroup = async (groupId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: user.id,
+          fullName: user.fullName,
+          username: user.username
+        })
+      });
+      if (res.ok) {
+        fetchGroups();
+        if (selectedGroup && selectedGroup.id === groupId) {
+          fetchGroupDetails(groupId);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleMemberAction = async (groupId: string, targetUserId: string, action: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/members/${targetUserId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, adminId: user.id })
+      });
+      if (res.ok) {
+        fetchGroupDetails(groupId);
+        fetchGroups();
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  if (selectedGroup && groupDetails) {
+    const isAdmin = groupDetails.admin_id === user.id;
+    const isMember = groupDetails.members.some((m: any) => m.userId === user.id && m.status === 'approved');
+    const isPending = groupDetails.members.some((m: any) => m.userId === user.id && m.status === 'pending');
+
+    return (
+      <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans pb-20">
+        <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
+          <div className="max-w-5xl mx-auto px-4 h-16 flex items-center">
+            <button onClick={() => setSelectedGroup(null)} className="flex items-center gap-2 hover:bg-[#7A8A4B] px-3 py-1.5 rounded-full transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+              <span className="font-medium">Kembali</span>
+            </button>
+            <div className="flex-1 text-center font-bold text-lg pr-10">{groupDetails.name}</div>
+          </div>
+        </header>
+
+        <main className="max-w-2xl mx-auto px-4 py-8">
+          <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8] shadow-sm mb-6">
+            <div className="flex justify-between items-start mb-4">
+              <div>
+                <h2 className="text-2xl font-bold mb-1">{groupDetails.name}</h2>
+                <div className="flex gap-2 text-xs font-bold uppercase tracking-wider mb-3">
+                  <span className="bg-[#F4F1EA] text-[#8A9A5B] px-2 py-1 rounded">{groupDetails.type === 'school' ? 'Sekolah' : 'Topik'}</span>
+                  <span className="bg-[#F4F1EA] text-[#8A9A5B] px-2 py-1 rounded">{groupDetails.privacy === 'public' ? 'Publik' : 'Privat'}</span>
+                </div>
+                <p className="text-[#A8A096]">{groupDetails.description}</p>
+              </div>
+              {!isAdmin && !isMember && !isPending && (
+                <button 
+                  onClick={() => handleJoinGroup(groupDetails.id)}
+                  className="bg-[#8A9A5B] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#7A8A4B] transition-colors"
+                >
+                  {groupDetails.privacy === 'private' ? 'Minta Bergabung' : 'Bergabung'}
+                </button>
+              )}
+              {isPending && (
+                <span className="bg-yellow-100 text-yellow-800 px-3 py-1 rounded-full text-sm font-bold">Menunggu Persetujuan</span>
+              )}
+            </div>
+            <div className="text-sm text-[#A8A096] font-medium">
+              {groupDetails.members.filter((m: any) => m.status === 'approved').length} Anggota
+            </div>
+          </div>
+
+          {(isMember || isAdmin) && (
+            <div className="flex gap-4 mb-6 border-b border-[#E5E0D8]">
+              <button 
+                onClick={() => setActiveTab('chat')}
+                className={`pb-3 font-bold px-2 ${activeTab === 'chat' ? 'text-[#8A9A5B] border-b-2 border-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'}`}
+              >
+                Diskusi
+              </button>
+              <button 
+                onClick={() => setActiveTab('members')}
+                className={`pb-3 font-bold px-2 ${activeTab === 'members' ? 'text-[#8A9A5B] border-b-2 border-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'}`}
+              >
+                Anggota
+              </button>
+            </div>
+          )}
+
+          {(!isMember && !isAdmin) ? (
+            <div className="bg-white rounded-2xl p-8 border border-[#E5E0D8] shadow-sm text-center">
+              <Shield className="w-12 h-12 text-[#E5E0D8] mx-auto mb-3" />
+              <h3 className="font-bold text-lg mb-2">Grup Terkunci</h3>
+              <p className="text-[#A8A096]">Anda harus bergabung dengan grup ini untuk melihat diskusi dan anggota.</p>
+            </div>
+          ) : activeTab === 'chat' ? (
+            <div className="bg-white rounded-2xl border border-[#E5E0D8] shadow-sm flex flex-col h-[500px]">
+              <div className="flex-1 p-4 overflow-y-auto space-y-4">
+                {messages.length === 0 ? (
+                  <div className="text-center py-10 text-[#A8A096]">
+                    <MessageSquare className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                    <p>Belum ada pesan. Mulai diskusi!</p>
+                  </div>
+                ) : (
+                  messages.map(msg => (
+                    <div key={msg.id} className={`flex flex-col ${msg.user_id === user.id ? 'items-end' : 'items-start'}`}>
+                      <div className="flex items-baseline gap-2 mb-1">
+                        <span className="font-bold text-sm">{msg.user.fullName}</span>
+                        <span className="text-[10px] text-[#A8A096]">{new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      </div>
+                      <div className={`px-4 py-2 rounded-2xl max-w-[80%] ${msg.user_id === user.id ? 'bg-[#8A9A5B] text-white rounded-tr-none' : 'bg-[#F4F1EA] text-[#4A4036] rounded-tl-none'}`}>
+                        {msg.content}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <form onSubmit={handleSendMessage} className="p-3 border-t border-[#E5E0D8] flex gap-2">
+                <input 
+                  type="text" 
+                  value={newMessageText}
+                  onChange={e => setNewMessageText(e.target.value)}
+                  placeholder="Ketik pesan..." 
+                  className="flex-1 px-4 py-2 bg-[#F4F1EA] rounded-full outline-none focus:ring-2 focus:ring-[#8A9A5B]"
+                />
+                <button type="submit" disabled={!newMessageText.trim()} className="p-2 bg-[#8A9A5B] text-white rounded-full hover:bg-[#7A8A4B] disabled:opacity-50 transition-colors">
+                  <Send className="w-5 h-5" />
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8] shadow-sm">
+              <h3 className="font-bold text-lg mb-4">Anggota Grup</h3>
+              
+              {isAdmin && groupDetails.members.some((m: any) => m.status === 'pending') && (
+                <div className="mb-6">
+                  <h4 className="font-bold text-sm text-[#8A9A5B] mb-2">Permintaan Bergabung</h4>
+                  <div className="space-y-2">
+                    {groupDetails.members.filter((m: any) => m.status === 'pending').map((m: any) => (
+                      <div key={m.userId} className="flex justify-between items-center p-3 bg-[#F4F1EA] rounded-xl">
+                        <div>
+                          <div className="font-bold">{m.user.fullName}</div>
+                          <div className="text-xs text-[#A8A096]">@{m.user.username}</div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button onClick={() => handleMemberAction(groupDetails.id, m.userId, 'approve')} className="p-1.5 bg-green-500 text-white rounded-lg hover:bg-green-600"><CheckCircle2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleMemberAction(groupDetails.id, m.userId, 'reject')} className="p-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600"><X className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {groupDetails.members.filter((m: any) => m.status === 'approved').map((m: any) => (
+                  <div key={m.userId} className="flex justify-between items-center p-3 border border-[#E5E0D8] rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold">
+                        {m.user.fullName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="font-bold flex items-center gap-2">
+                          {m.user.fullName}
+                          {m.role === 'admin' && <span className="bg-[#8A9A5B] text-white text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider">Admin</span>}
+                        </div>
+                        <div className="text-xs text-[#A8A096]">@{m.user.username}</div>
+                      </div>
+                    </div>
+                    {isAdmin && m.userId !== user.id && (
+                      <button onClick={() => handleMemberAction(groupDetails.id, m.userId, 'remove')} className="text-red-500 hover:bg-red-50 p-2 rounded-lg transition-colors text-sm font-bold">
+                        Keluarkan
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-[#F4F1EA] text-[#4A4036] font-sans pb-20">
+      <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center">
+          <button onClick={onBack} className="flex items-center gap-2 hover:bg-[#7A8A4B] px-3 py-1.5 rounded-full transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+            <span className="font-medium">Kembali</span>
+          </button>
+          <div className="flex-1 text-center font-bold text-lg pr-10">Grup Komunitas</div>
+        </div>
+      </header>
+
+      <main className="max-w-2xl mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold">Grup</h2>
+          <button 
+            onClick={() => setIsCreating(true)}
+            className="bg-[#8A9A5B] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#7A8A4B] transition-colors flex items-center gap-2"
+          >
+            <Plus className="w-4 h-4" /> Buat Grup
+          </button>
+        </div>
+
+        {isCreating && (
+          <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8] shadow-sm mb-6 animate-in slide-in-from-top-4">
+            <h3 className="font-bold text-lg mb-4">Buat Grup Baru</h3>
+            <form onSubmit={handleCreateGroup} className="space-y-4">
+              <div>
+                <label className="block text-sm font-bold mb-1">Nama Grup</label>
+                <input required type="text" value={newGroup.name} onChange={e => setNewGroup({...newGroup, name: e.target.value})} className="w-full p-3 border border-[#E5E0D8] rounded-xl focus:ring-2 focus:ring-[#8A9A5B] outline-none" placeholder="Contoh: Eco-Warriors SMAN 1" />
+              </div>
+              <div>
+                <label className="block text-sm font-bold mb-1">Deskripsi</label>
+                <textarea value={newGroup.description} onChange={e => setNewGroup({...newGroup, description: e.target.value})} className="w-full p-3 border border-[#E5E0D8] rounded-xl focus:ring-2 focus:ring-[#8A9A5B] outline-none" placeholder="Deskripsi grup..." rows={3} />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-bold mb-1">Tipe</label>
+                  <select value={newGroup.type} onChange={e => setNewGroup({...newGroup, type: e.target.value})} className="w-full p-3 border border-[#E5E0D8] rounded-xl focus:ring-2 focus:ring-[#8A9A5B] outline-none">
+                    <option value="school">Sekolah</option>
+                    <option value="topic">Topik Pembicaraan</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold mb-1">Privasi</label>
+                  <select value={newGroup.privacy} onChange={e => setNewGroup({...newGroup, privacy: e.target.value})} className="w-full p-3 border border-[#E5E0D8] rounded-xl focus:ring-2 focus:ring-[#8A9A5B] outline-none">
+                    <option value="public">Publik (Terbuka)</option>
+                    <option value="private">Privat (Tertutup)</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end mt-4">
+                <button type="button" onClick={() => setIsCreating(false)} className="px-4 py-2 text-[#A8A096] font-bold hover:bg-[#F4F1EA] rounded-xl transition-colors">Batal</button>
+                <button type="submit" className="bg-[#8A9A5B] text-white px-6 py-2 rounded-xl font-bold hover:bg-[#7A8A4B] transition-colors">Buat</button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {groups.length === 0 ? (
+            <div className="text-center py-12 bg-white rounded-2xl border border-[#E5E0D8]">
+              <UserCircle2 className="w-12 h-12 text-[#E5E0D8] mx-auto mb-3" />
+              <p className="text-[#A8A096] font-medium">Belum ada grup yang tersedia.</p>
+            </div>
+          ) : (
+            groups.map(group => (
+              <div key={group.id} className="bg-white rounded-2xl p-5 border border-[#E5E0D8] shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => setSelectedGroup(group)}>
+                <div className="flex justify-between items-start mb-2">
+                  <h3 className="font-bold text-lg">{group.name}</h3>
+                  <div className="flex gap-2">
+                    {group.userStatus === 'approved' && <span className="bg-[#8A9A5B] text-white text-[10px] px-2 py-1 rounded-full font-bold uppercase">Anggota</span>}
+                    {group.userStatus === 'pending' && <span className="bg-yellow-100 text-yellow-800 text-[10px] px-2 py-1 rounded-full font-bold uppercase">Menunggu</span>}
+                  </div>
+                </div>
+                <p className="text-[#A8A096] text-sm mb-4 line-clamp-2">{group.description}</p>
+                <div className="flex items-center gap-4 text-xs font-bold text-[#A8A096]">
+                  <span className="flex items-center gap-1"><UserCircle2 className="w-4 h-4" /> {group.memberCount} Anggota</span>
+                  <span className="uppercase tracking-wider">{group.type === 'school' ? 'Sekolah' : 'Topik'}</span>
+                  <span className="uppercase tracking-wider">{group.privacy === 'public' ? 'Publik' : 'Privat'}</span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </main>
+    </div>
+  );
+};
+
+// --- Global Search Component ---
+const GlobalSearch = ({ 
+  onUserSelect, 
+  onPostSelect, 
+  onGroupSelect 
+}: { 
+  onUserSelect: (user: any) => void, 
+  onPostSelect: (postId: string) => void, 
+  onGroupSelect: (groupId: string) => void 
+}) => {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<{users: any[], posts: any[], groups: any[]}>({users: [], posts: [], groups: []});
+  const [isOpen, setIsOpen] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (query.trim().length > 0) {
+      const fetchResults = async () => {
+        try {
+          const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+          const data = await res.json();
+          setResults(data);
+          setIsOpen(true);
+        } catch (e) {
+          console.error(e);
+        }
+      };
+      const timeoutId = setTimeout(fetchResults, 300);
+      return () => clearTimeout(timeoutId);
+    } else {
+      setResults({users: [], posts: [], groups: []});
+      setIsOpen(false);
+    }
+  }, [query]);
+
+  return (
+    <div className="relative flex-1 max-w-sm mx-4" ref={searchRef}>
+      <div className="relative">
+        <input 
+          type="text" 
+          placeholder="Cari orang, postingan, grup..." 
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => query.trim() && setIsOpen(true)}
+          className="w-full bg-white/20 text-white placeholder-white/70 px-4 py-1.5 pl-10 rounded-full outline-none focus:bg-white/30 transition-colors text-sm"
+        />
+        <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-white/70" />
+      </div>
+
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-[#E5E0D8] overflow-hidden z-[100] max-h-96 overflow-y-auto">
+          {results.users.length === 0 && results.posts.length === 0 && results.groups.length === 0 ? (
+            <div className="p-4 text-center text-sm text-[#A8A096]">Tidak ada hasil ditemukan</div>
+          ) : (
+            <div className="py-2">
+              {results.users.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider">Orang</div>
+                  {results.users.map(u => (
+                    <div 
+                      key={u.id} 
+                      onClick={() => { onUserSelect(u); setIsOpen(false); setQuery(''); }}
+                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer flex items-center gap-3"
+                    >
+                      <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold text-xs">
+                        {u.full_name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="text-sm font-bold text-[#4A4036]">{u.full_name}</div>
+                        <div className="text-xs text-[#A8A096]">@{u.username}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {results.groups.length > 0 && (
+                <div className="mb-2">
+                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider">Grup</div>
+                  {results.groups.map(g => (
+                    <div 
+                      key={g.id} 
+                      onClick={() => { onGroupSelect(g.id); setIsOpen(false); setQuery(''); }}
+                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer"
+                    >
+                      <div className="text-sm font-bold text-[#4A4036]">{g.name}</div>
+                      <div className="text-xs text-[#A8A096] truncate">{g.description}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {results.posts.length > 0 && (
+                <div>
+                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider">Postingan</div>
+                  {results.posts.map(p => (
+                    <div 
+                      key={p.id} 
+                      onClick={() => { onPostSelect(p.id); setIsOpen(false); setQuery(''); }}
+                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer"
+                    >
+                      <div className="text-xs font-bold text-[#A8A096] mb-0.5">{p.user?.full_name}</div>
+                      <div className="text-sm text-[#4A4036] line-clamp-2">{p.content}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Main App Component ---
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
-  const [view, setView] = useState<'feed' | 'profile' | 'students'>('feed');
+  const [view, setView] = useState<'feed' | 'profile' | 'groups'>('feed');
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
   const [isTutorialOpen, setIsTutorialOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
@@ -1763,6 +2223,7 @@ export default function App() {
   const [editSubbab, setEditSubbab] = useState<Subbab>('Kesehatan Lingkungan');
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [selectedUserForProfile, setSelectedUserForProfile] = useState<UserProfile | null>(null);
+  const [initialGroupId, setInitialGroupId] = useState<string | null>(null);
   
   // Assignment Modal State
   const [isAssignmentModalOpen, setIsAssignmentModalOpen] = useState(false);
@@ -2080,8 +2541,8 @@ export default function App() {
     return <ProfilePage user={selectedUserForProfile || currentUser} currentUser={currentUser} onBack={() => { setView('feed'); setSelectedUserForProfile(null); }} />;
   }
 
-  if (view === 'students') {
-    return <StudentsView schoolName={currentUser.schoolName} teacherId={currentUser.id} onBack={() => setView('feed')} />;
+  if (view === 'groups') {
+    return <GroupsView user={currentUser} initialGroupId={initialGroupId} onClearInitialGroup={() => setInitialGroupId(null)} onBack={() => { setView('feed'); setInitialGroupId(null); }} />;
   }
 
   return (
@@ -2108,9 +2569,28 @@ export default function App() {
           <div className="flex items-center gap-2">
             <Leaf className="w-6 h-6" />
             <h1 className="text-xl font-bold tracking-tight hidden sm:block">EduGram</h1>
-            <span className="text-xs font-medium bg-[#7A8A4B] px-2 py-1 rounded-full sm:ml-2">Eco-Influencer</span>
+            <span className="text-xs font-medium bg-[#7A8A4B] px-2 py-1 rounded-full sm:ml-2 hidden md:block">Eco-Influencer</span>
           </div>
           
+          <GlobalSearch 
+            onUserSelect={(u) => { 
+              setView('profile'); 
+              setSelectedUserForProfile({ 
+                id: u.id, 
+                fullName: u.full_name, 
+                username: u.username, 
+                role: u.role 
+              } as any); 
+            }}
+            onPostSelect={(postId) => { 
+              setView('feed'); 
+              setTimeout(() => {
+                document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              }, 500);
+            }}
+            onGroupSelect={(groupId) => { setInitialGroupId(groupId); setView('groups'); }}
+          />
+
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setIsTutorialOpen(true)}
@@ -2119,11 +2599,9 @@ export default function App() {
             >
               <MessageCircleQuestion className="w-5 h-5" />
             </button>
-            <button onClick={() => setView('feed')} className="text-sm font-bold text-white">Feed</button>
-            <button onClick={() => setView('profile')} className="text-sm font-bold text-white/70">Profil</button>
-            {currentUser.role === 'teacher' && (
-              <button onClick={() => setView('students')} className="text-sm font-bold text-white/70">Siswa</button>
-            )}
+            <button onClick={() => setView('feed')} className={`text-sm font-bold ${view === 'feed' ? 'text-white' : 'text-white/70'}`}>Feed</button>
+            <button onClick={() => setView('groups')} className={`text-sm font-bold ${view === 'groups' ? 'text-white' : 'text-white/70'}`}>Grup</button>
+            <button onClick={() => setView('profile')} className={`text-sm font-bold ${view === 'profile' ? 'text-white' : 'text-white/70'}`}>Profil</button>
             <div className="w-px h-6 bg-[#8A9A5B] mx-2"></div>
             <button 
               onClick={() => setView('profile')}
@@ -2298,7 +2776,7 @@ export default function App() {
               </div>
             ) : (
               posts.map(post => (
-                <div key={post.id} className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden relative group">
+                <div key={post.id} id={`post-${post.id}`} className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden relative group">
                   
                   {/* Scientific Particle Effect (CSS Animation) */}
                   {post.isScientific && (

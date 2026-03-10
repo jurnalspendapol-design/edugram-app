@@ -374,6 +374,169 @@ app.post("/api/users/:id/follow", async (req, res) => {
   }
 });
 
+// --- Groups Logic (In-Memory Fallback) ---
+const fallbackGroups: Record<string, any> = {};
+const fallbackGroupMembers: Record<string, any[]> = {}; // groupId -> array of { userId, role: 'admin'|'member', status: 'approved'|'pending', user: { fullName, username } }
+const fallbackGroupMessages: Record<string, any[]> = {}; // groupId -> array of messages
+
+app.get("/api/groups/:id/messages", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const messages = fallbackGroupMessages[groupId] || [];
+    res.json(messages);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/groups/:id/messages", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const { userId, fullName, username, content } = req.body;
+    
+    if (!fallbackGroupMessages[groupId]) fallbackGroupMessages[groupId] = [];
+    
+    const newMessage = {
+      id: 'msg_' + Date.now().toString(),
+      group_id: groupId,
+      user_id: userId,
+      user: { fullName, username },
+      content,
+      created_at: new Date().toISOString()
+    };
+    
+    fallbackGroupMessages[groupId].push(newMessage);
+    res.json({ success: true, message: newMessage });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/groups", async (req, res) => {
+  try {
+    const { name, description, type, privacy, adminId, adminName, adminUsername } = req.body;
+    if (!name || !adminId) return res.status(400).json({ error: "Nama grup dan admin wajib diisi" });
+
+    const groupId = 'group_' + Date.now().toString();
+    const newGroup = {
+      id: groupId,
+      name,
+      description: description || '',
+      type: type || 'topic', // 'school' | 'topic'
+      privacy: privacy || 'public', // 'public' | 'private'
+      admin_id: adminId,
+      created_at: new Date().toISOString()
+    };
+
+    fallbackGroups[groupId] = newGroup;
+    fallbackGroupMembers[groupId] = [{
+      userId: adminId,
+      role: 'admin',
+      status: 'approved',
+      user: { fullName: adminName, username: adminUsername }
+    }];
+
+    res.json({ success: true, group: newGroup });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/groups", async (req, res) => {
+  try {
+    const userId = req.query.userId as string;
+    const allGroups = Object.values(fallbackGroups).map(group => {
+      const members = fallbackGroupMembers[group.id] || [];
+      const userMember = members.find(m => m.userId === userId);
+      return {
+        ...group,
+        memberCount: members.filter(m => m.status === 'approved').length,
+        userStatus: userMember ? userMember.status : null,
+        userRole: userMember ? userMember.role : null
+      };
+    });
+    res.json(allGroups);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/groups/:id", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const group = fallbackGroups[groupId];
+    if (!group) return res.status(404).json({ error: "Grup tidak ditemukan" });
+
+    const members = fallbackGroupMembers[groupId] || [];
+    res.json({
+      ...group,
+      members
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/groups/:id/join", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const { userId, fullName, username } = req.body;
+    const group = fallbackGroups[groupId];
+    
+    if (!group) return res.status(404).json({ error: "Grup tidak ditemukan" });
+    if (!userId) return res.status(400).json({ error: "User ID wajib diisi" });
+
+    if (!fallbackGroupMembers[groupId]) fallbackGroupMembers[groupId] = [];
+    
+    const existingMember = fallbackGroupMembers[groupId].find(m => m.userId === userId);
+    if (existingMember) {
+      return res.status(400).json({ error: "Sudah bergabung atau menunggu persetujuan" });
+    }
+
+    const status = group.privacy === 'private' ? 'pending' : 'approved';
+    
+    fallbackGroupMembers[groupId].push({
+      userId,
+      role: 'member',
+      status,
+      user: { fullName, username }
+    });
+
+    res.json({ success: true, status });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.put("/api/groups/:id/members/:userId", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const targetUserId = req.params.userId;
+    const { action, adminId } = req.body; // action: 'approve' | 'reject' | 'remove'
+
+    const group = fallbackGroups[groupId];
+    if (!group) return res.status(404).json({ error: "Grup tidak ditemukan" });
+
+    const members = fallbackGroupMembers[groupId] || [];
+    const adminMember = members.find(m => m.userId === adminId && m.role === 'admin');
+    
+    if (!adminMember) return res.status(403).json({ error: "Hanya admin yang dapat melakukan aksi ini" });
+
+    const targetIndex = members.findIndex(m => m.userId === targetUserId);
+    if (targetIndex === -1) return res.status(404).json({ error: "Anggota tidak ditemukan" });
+
+    if (action === 'approve') {
+      members[targetIndex].status = 'approved';
+    } else if (action === 'reject' || action === 'remove') {
+      members.splice(targetIndex, 1);
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get Posts
 app.get("/api/posts", async (req, res) => {
   try {
@@ -965,18 +1128,39 @@ app.delete("/api/users/:id", async (req, res) => {
   }
 });
 
-// Get Students by School
-app.get("/api/students/:schoolName", async (req, res) => {
+app.get("/api/search", async (req, res) => {
   try {
-    const supabase = getSupabase();
-    const { data: students, error } = await supabase
-      .from('users')
-      .select('id, username, full_name, class_name, student_number')
-      .eq('school_name', req.params.schoolName)
-      .eq('role', 'student');
+    const q = req.query.q as string;
+    if (!q) return res.json({ users: [], posts: [], groups: [] });
 
-    if (error) return res.status(500).json({ error: "Gagal mengambil data siswa" });
-    res.json(students);
+    const supabase = getSupabase();
+    const query = q.toLowerCase();
+
+    // Search users
+    const { data: users } = await supabase
+      .from('users')
+      .select('id, username, full_name, profile_picture_url, role')
+      .or(`full_name.ilike.%${query}%,username.ilike.%${query}%`)
+      .limit(10);
+
+    // Search posts
+    const { data: posts } = await supabase
+      .from('posts')
+      .select('id, content, user_id, user:users(id, full_name, username, profile_picture_url)')
+      .ilike('content', `%${query}%`)
+      .limit(10);
+
+    // Search groups (in-memory)
+    const groups = Object.values(fallbackGroups).filter(g => 
+      g.name.toLowerCase().includes(query) || 
+      g.description.toLowerCase().includes(query)
+    ).slice(0, 10);
+
+    res.json({
+      users: users || [],
+      posts: posts || [],
+      groups: groups || []
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
