@@ -2302,7 +2302,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setCurrentUser(GUEST_USER);
+    setCurrentUser({ ...GUEST_USER });
     localStorage.removeItem('edugram_user_profile');
     setView('feed');
   };
