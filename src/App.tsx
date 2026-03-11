@@ -2302,7 +2302,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
+    setCurrentUser(GUEST_USER);
     localStorage.removeItem('edugram_user_profile');
     setView('feed');
   };
@@ -2793,7 +2793,7 @@ export default function App() {
                           setSelectedUserForProfile({ id: post.authorId, fullName: post.authorName, className: post.authorClass } as any);
                           setView('profile');
                         }}>
-                          {post.authorName?.charAt(0)?.toUpperCase() || '?'}
+                          {(post.authorName || post.authorUsername || '?').charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <div className="flex items-center gap-1.5">
@@ -2804,7 +2804,7 @@ export default function App() {
                               }}
                               className="font-bold hover:underline"
                             >
-                              {post.authorName}
+                              {post.authorName || post.authorUsername || 'User'}
                             </button>
                             {/* Simple check for verified - in real app would come from DB */}
                             {(post.insightful + post.ask + post.support) > 10 && (
