@@ -329,7 +329,7 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
               >
                 <Popup>
                   <div className="p-1 max-w-[200px]">
-                    <div className="font-bold text-[#8A9A5B] text-xs">@{post.authorUsername || 'User'}</div>
+                    <div className="font-bold text-[#8A9A5B] text-xs">@{post.authorUsername || '?'}</div>
                     <div className="text-[10px] text-[#4A4036] mt-1 leading-tight">
                       {post.caption.substring(0, 80)}{post.caption.length > 80 ? '...' : ''}
                     </div>
@@ -2152,8 +2152,8 @@ const GlobalSearch = ({
 // --- Main App Component ---
 const GUEST_USER: UserProfile = {
   id: 'guest',
-  username: 'guest',
-  fullName: 'Tamu',
+  username: 'pengunjung',
+  fullName: 'Pengunjung',
   className: 'Guest',
   studentNumber: '0',
   schoolName: 'Guest School',
@@ -2302,6 +2302,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    console.log('Logout clicked');
     setCurrentUser({ ...GUEST_USER });
     localStorage.removeItem('edugram_user_profile');
     setView('feed');
@@ -2804,7 +2805,7 @@ export default function App() {
                               }}
                               className="font-bold hover:underline"
                             >
-                              {post.authorName || post.authorUsername || 'User'}
+                              {post.authorName || post.authorUsername || '?'}
                             </button>
                             {/* Simple check for verified - in real app would come from DB */}
                             {(post.insightful + post.ask + post.support) > 10 && (
