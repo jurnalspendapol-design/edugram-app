@@ -200,10 +200,14 @@ app.get("/api/debug/db", async (req, res) => {
 app.post("/api/register", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { username, fullName, password, role, className } = req.body;
+    const { username, fullName, password, role, className, schoolName, teacherKey } = req.body;
 
-    if (!username || !fullName || !password) {
-      return res.status(400).json({ error: "Data tidak lengkap" });
+    if (!username || !fullName || !password || !schoolName) {
+      return res.status(400).json({ error: "Data tidak lengkap (Username, Nama, Password, dan Sekolah wajib diisi)" });
+    }
+
+    if (role === 'teacher' && teacherKey !== 'whyedugram') {
+      return res.status(403).json({ error: "Kata kunci guru salah" });
     }
 
     // 1. Cek apakah username sudah ada
@@ -241,9 +245,14 @@ app.post("/api/register", async (req, res) => {
       else if (availableColumns.includes('nama')) newUser.nama = fullName;
 
       // Mapping Kelas
-      if (availableColumns.includes('class_name')) newUser.class_name = className || '10-A';
-      else if (availableColumns.includes('classname')) newUser.classname = className || '10-A';
-      else if (availableColumns.includes('kelas')) newUser.kelas = className || '10-A';
+      if (availableColumns.includes('class_name')) newUser.class_name = className || (role === 'teacher' ? 'GURU' : '10-A');
+      else if (availableColumns.includes('classname')) newUser.classname = className || (role === 'teacher' ? 'GURU' : '10-A');
+      else if (availableColumns.includes('kelas')) newUser.kelas = className || (role === 'teacher' ? 'GURU' : '10-A');
+
+      // Mapping Sekolah
+      if (availableColumns.includes('school_name')) newUser.school_name = schoolName || 'Sekolah EduGram';
+      else if (availableColumns.includes('schoolname')) newUser.schoolname = schoolName || 'Sekolah EduGram';
+      else if (availableColumns.includes('sekolah')) newUser.sekolah = schoolName || 'Sekolah EduGram';
 
       // Mapping Role
       if (availableColumns.includes('role')) newUser.role = role || 'student';
@@ -708,8 +717,15 @@ app.post("/api/groups/:id/messages", async (req, res) => {
 
 app.post("/api/groups", async (req, res) => {
   try {
+    const supabase = getSupabase();
     const { name, description, type, privacy, adminId, adminName, adminUsername } = req.body;
     if (!name || !adminId) return res.status(400).json({ error: "Nama grup dan admin wajib diisi" });
+
+    // Verify if user is a teacher
+    const { data: user } = await supabase.from('users').select('role').eq('id', adminId).single();
+    if (user?.role !== 'teacher') {
+      return res.status(403).json({ error: "Hanya guru yang dapat membuat grup atau kelas baru" });
+    }
 
     const groupId = 'group_' + Date.now().toString();
     const newGroup = {

@@ -1966,12 +1966,14 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
       <main className="max-w-2xl mx-auto px-4 py-8">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-bold">Grup</h2>
-          <button 
-            onClick={() => setIsCreating(true)}
-            className="bg-[#8A9A5B] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#7A8A4B] transition-colors flex items-center gap-2"
-          >
-            <Plus className="w-4 h-4" /> Buat Grup
-          </button>
+          {user.role === 'teacher' && (
+            <button 
+              onClick={() => setIsCreating(true)}
+              className="bg-[#8A9A5B] text-white px-4 py-2 rounded-xl font-bold hover:bg-[#7A8A4B] transition-colors flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" /> Buat Grup
+            </button>
+          )}
         </div>
 
         {isCreating && (
@@ -2171,6 +2173,9 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
   const [username, setUsername] = useState('');
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
+  const [className, setClassName] = useState('');
+  const [schoolName, setSchoolName] = useState('');
+  const [teacherKey, setTeacherKey] = useState('');
   const [isTeacher, setIsTeacher] = useState(false);
   const [dbStatus, setDbStatus] = useState<{ok: boolean, message?: string} | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -2191,7 +2196,15 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
     try {
       const endpoint = isRegister ? '/api/register' : '/api/login';
       const body = isRegister 
-        ? { username, fullName, password, role: isTeacher ? 'teacher' : 'student' }
+        ? { 
+            username, 
+            fullName, 
+            password, 
+            role: isTeacher ? 'teacher' : 'student',
+            className: isTeacher ? 'GURU' : className,
+            schoolName,
+            teacherKey: isTeacher ? teacherKey : undefined
+          }
         : { username, password };
 
       console.log('Fetching:', endpoint, body);
@@ -2242,8 +2255,21 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
   return (
     <div className="min-h-screen flex items-center justify-center bg-[#F4F1EA] p-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
-        <h2 className="text-2xl font-bold text-[#8A9A5B] mb-6 text-center">
-          {isRegister ? 'Registrasi EduGram' : 'Login EduGram'}
+        <div className="text-center mb-8">
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-[#8A9A5B] rounded-2xl mb-4 shadow-lg transform rotate-3">
+            <Leaf className="w-10 h-10 text-white" />
+          </div>
+          <h1 className="text-3xl font-black text-[#8A9A5B] mb-2 tracking-tight">EduGram</h1>
+          <p className="text-sm font-medium text-gray-600 px-4">
+            Selamat datang di <span className="text-[#8A9A5B] font-bold">EduGram</span>! 🌿
+          </p>
+          <p className="text-[11px] text-gray-400 mt-2 px-6 leading-relaxed">
+            Platform edukasi interaktif untuk belajar sains, berbagi misi lingkungan, dan berkolaborasi dalam menjaga kelestarian bumi kita.
+          </p>
+        </div>
+
+        <h2 className="text-xl font-bold text-gray-800 mb-6 text-center border-t pt-6">
+          {isRegister ? 'Buat Akun Baru' : 'Masuk ke Akun'}
         </h2>
 
         {dbStatus && !dbStatus.ok && (
@@ -2264,23 +2290,42 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-3 border rounded-lg" required />
-          {isRegister && <input type="text" placeholder="Nama Lengkap" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full p-3 border rounded-lg" required />}
-          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 border rounded-lg" required />
-          
           {isRegister && (
-            <div className="space-y-2">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={isTeacher} onChange={e => setIsTeacher(e.target.checked)} />
-                Daftar sebagai Guru
+            <div className="space-y-3 p-3 bg-[#F4F1EA] rounded-xl border border-[#E5E0D8]">
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={isTeacher} onChange={e => setIsTeacher(e.target.checked)} className="w-4 h-4" />
+                <span className="text-sm font-bold text-[#8A9A5B]">Daftar sebagai Guru</span>
               </label>
+              
               {isTeacher && (
-                <p className="text-sm text-gray-600 italic">
-                  Untuk mendaftar sebagai guru, silakan hubungi pengembang.
-                </p>
+                <div className="animate-in fade-in slide-in-from-top-2 duration-300">
+                  <input 
+                    type="password" 
+                    placeholder="Kata Kunci Guru" 
+                    value={teacherKey} 
+                    onChange={e => setTeacherKey(e.target.value)} 
+                    className="w-full p-3 border border-[#8A9A5B] rounded-lg focus:ring-2 focus:ring-[#8A9A5B] outline-none bg-white" 
+                    required 
+                  />
+                  <p className="text-[10px] text-gray-500 mt-1 italic">
+                    * Masukkan kata kunci khusus untuk mendaftar sebagai guru.
+                  </p>
+                </div>
               )}
             </div>
           )}
+
+          <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-3 border rounded-lg" required />
+          {isRegister && (
+            <>
+              <input type="text" placeholder="Nama Lengkap" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full p-3 border rounded-lg" required />
+              {!isTeacher && (
+                <input type="text" placeholder="Kelas (Contoh: 10-A)" value={className} onChange={e => setClassName(e.target.value)} className="w-full p-3 border rounded-lg" required />
+              )}
+              <input type="text" placeholder="Nama Sekolah" value={schoolName} onChange={e => setSchoolName(e.target.value)} className="w-full p-3 border rounded-lg" required />
+            </>
+          )}
+          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 border rounded-lg" required />
           
           <button 
             type="submit" 
