@@ -2149,8 +2149,93 @@ const GlobalSearch = ({
   );
 };
 
-// --- Main App Component ---
-const GUEST_USER: UserProfile = {
+const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => {
+  const [isRegister, setIsRegister] = useState(false);
+  const [username, setUsername] = useState('');
+  const [fullName, setFullName] = useState('');
+  const [password, setPassword] = useState('');
+  const [isTeacher, setIsTeacher] = useState(false);
+  const [teacherCode, setTeacherCode] = useState('');
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (isRegister) {
+      if (isTeacher && teacherCode !== 'whyedugram') {
+        alert('Kode guru salah!');
+        return;
+      }
+      // Simulate registration
+      const newUser: UserProfile = {
+        id: Date.now().toString(),
+        username,
+        fullName,
+        className: isTeacher ? 'Guru' : '10-A',
+        studentNumber: '0',
+        schoolName: 'Sekolah EduGram',
+        profilePictureUrl: '',
+        bio: '',
+        role: isTeacher ? 'teacher' : 'student',
+        xp: 0,
+        interactions: 0,
+        streak: 0,
+        followersCount: 0,
+        followingCount: 0
+      };
+      onLogin(newUser);
+    } else {
+      // Simulate login
+      const mockUser: UserProfile = {
+        id: '1',
+        username,
+        fullName: 'Pengguna EduGram',
+        className: '10-A',
+        studentNumber: '12345',
+        schoolName: 'Sekolah EduGram',
+        profilePictureUrl: '',
+        bio: 'Halo!',
+        role: 'student',
+        xp: 100,
+        interactions: 5,
+        streak: 2,
+        followersCount: 10,
+        followingCount: 5
+      };
+      onLogin(mockUser);
+    }
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[#F4F1EA] p-4">
+      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md">
+        <h2 className="text-2xl font-bold text-[#8A9A5B] mb-6 text-center">
+          {isRegister ? 'Registrasi EduGram' : 'Login EduGram'}
+        </h2>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-3 border rounded-lg" required />
+          {isRegister && <input type="text" placeholder="Nama Lengkap" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full p-3 border rounded-lg" required />}
+          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} className="w-full p-3 border rounded-lg" required />
+          
+          {isRegister && (
+            <div className="space-y-2">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={isTeacher} onChange={e => setIsTeacher(e.target.checked)} />
+                Daftar sebagai Guru
+              </label>
+              {isTeacher && <input type="text" placeholder="Kode Guru (whyedugram)" value={teacherCode} onChange={e => setTeacherCode(e.target.value)} className="w-full p-3 border rounded-lg" required />}
+            </div>
+          )}
+          
+          <button type="submit" className="w-full bg-[#8A9A5B] text-white p-3 rounded-lg font-bold hover:bg-[#7A8A4B]">
+            {isRegister ? 'Daftar' : 'Login'}
+          </button>
+        </form>
+        <button onClick={() => setIsRegister(!isRegister)} className="w-full mt-4 text-[#8A9A5B] font-bold">
+          {isRegister ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'}
+        </button>
+      </div>
+    </div>
+  );
+};
   id: 'guest',
   username: 'pengunjung',
   fullName: 'Pengunjung',
@@ -2169,6 +2254,7 @@ const GUEST_USER: UserProfile = {
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_USER);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
   const [view, setView] = useState<'feed' | 'profile' | 'groups'>('feed');
@@ -2199,6 +2285,10 @@ export default function App() {
   const [activeMissionPostId, setActiveMissionPostId] = useState<string | null>(null);
   const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
   const [lastLevel, setLastLevel] = useState(1);
+
+  if (!isLoggedIn) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   // Form state
   const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
@@ -2285,6 +2375,7 @@ export default function App() {
 
   const handleLogin = (profile: UserProfile) => {
     setCurrentUser(profile);
+    setIsLoggedIn(true);
     localStorage.setItem('edugram_user_profile', JSON.stringify(profile));
     
     // Check if tutorial has been seen
@@ -2304,6 +2395,7 @@ export default function App() {
   const handleLogout = () => {
     console.log('Logout clicked');
     setCurrentUser({ ...GUEST_USER });
+    setIsLoggedIn(false);
     localStorage.removeItem('edugram_user_profile');
     setView('feed');
   };
