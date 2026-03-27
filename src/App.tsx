@@ -5,11 +5,28 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
+
+// Global error handler for debugging
+if (typeof window !== 'undefined') {
+  window.addEventListener('error', (event) => {
+    console.error('Global error caught:', event.error);
+    // Don't show alert for benign errors
+    if (event.message && !event.message.includes('ResizeObserver')) {
+      // alert(`Terjadi kesalahan sistem: ${event.message}`);
+    }
+  });
+  
+  window.addEventListener('unhandledrejection', (event) => {
+    console.error('Unhandled promise rejection:', event.reason);
+  });
+}
+
+console.log('App.tsx loading...');
 
 export const updateEcoHealth = (userId: string, amount: number) => {
   const storedHealth = localStorage.getItem(`eco_health_${userId}`);
@@ -2155,47 +2172,70 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [isTeacher, setIsTeacher] = useState(false);
+  const [dbStatus, setDbStatus] = useState<{ok: boolean, message?: string} | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch('/api/health')
+      .then(res => res.json())
+      .then(data => setDbStatus({ ok: data.status === 'ok' }))
+      .catch(err => setDbStatus({ ok: false, message: 'Gagal terhubung ke API' }));
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isRegister) {
-      // Simulate registration
-      const newUser: UserProfile = {
-        id: Date.now().toString(),
-        username,
-        fullName,
-        className: isTeacher ? 'Guru' : '10-A',
-        studentNumber: '0',
-        schoolName: 'Sekolah EduGram',
-        profilePictureUrl: '',
-        bio: '',
-        role: isTeacher ? 'teacher' : 'student',
-        xp: 0,
-        interactions: 0,
-        streak: 0,
-        followersCount: 0,
-        followingCount: 0
-      };
-      onLogin(newUser);
-    } else {
-      // Simulate login
-      const mockUser: UserProfile = {
-        id: '1',
-        username,
-        fullName: 'Pengguna EduGram',
-        className: '10-A',
-        studentNumber: '12345',
-        schoolName: 'Sekolah EduGram',
-        profilePictureUrl: '',
-        bio: 'Halo!',
-        role: 'student',
-        xp: 100,
-        interactions: 5,
-        streak: 2,
-        followersCount: 10,
-        followingCount: 5
-      };
-      onLogin(mockUser);
+    console.log('Submit triggered:', { isRegister, username, fullName, isTeacher });
+    setIsLoading(true);
+    setAuthError(null);
+    try {
+      const endpoint = isRegister ? '/api/register' : '/api/login';
+      const body = isRegister 
+        ? { username, fullName, password, role: isTeacher ? 'teacher' : 'student' }
+        : { username, password };
+
+      console.log('Fetching:', endpoint, body);
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      console.log('Response status:', response.status);
+      let data;
+      try {
+        data = await response.json();
+      } catch (e) {
+        console.error('JSON Parse Error:', e);
+        throw new Error('Respon server tidak valid (bukan JSON)');
+      }
+
+      if (response.ok) {
+        console.log('Auth success:', data);
+        onLogin(data);
+      } else {
+        console.warn('Auth failed:', data);
+        const errorMsg = data.error || data.message || 'Terjadi kesalahan';
+        const details = data.details ? `\nDetail: ${JSON.stringify(data.details)}` : '';
+        const hint = data.hint ? `\n\n💡 Hint: ${data.hint}` : '';
+        
+        let sqlFix = '';
+        const isColumnError = errorMsg.includes('column') || details.includes('column') || details.includes('PGRST204') || details.includes('23502');
+        const isRLSError = errorMsg.includes('RLS') || details.includes('policy') || details.includes('42501');
+
+        if (isRegister && isColumnError) {
+          sqlFix = `\n\n🛠️ SOLUSI SQL (Kolom Hilang / ID Null):\nJalankan SQL ini di Dashboard Supabase > SQL Editor:\n\n-- Pastikan tabel ada dan ID punya default\nCREATE TABLE IF NOT EXISTS users (\n  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,\n  username TEXT UNIQUE NOT NULL,\n  password TEXT NOT NULL,\n  full_name TEXT,\n  class_name TEXT,\n  role TEXT DEFAULT 'student',\n  xp INTEGER DEFAULT 0,\n  created_at TIMESTAMPTZ DEFAULT NOW()\n);\n\n-- Jika tabel sudah ada tapi ID error, jalankan ini:\nALTER TABLE users ALTER COLUMN id SET DEFAULT gen_random_uuid();`;
+        } else if (isRegister && isRLSError) {
+          sqlFix = `\n\n🛠️ SOLUSI SQL (RLS Aktif):\nJalankan SQL ini di Dashboard Supabase > SQL Editor untuk mengizinkan pendaftaran:\n\nALTER TABLE users DISABLE ROW LEVEL SECURITY;\n-- ATAU tambahkan policy:\nCREATE POLICY "Allow public insert" ON users FOR INSERT WITH CHECK (true);\nCREATE POLICY "Allow public select" ON users FOR SELECT USING (true);`;
+        }
+        
+        setAuthError(`${errorMsg}${details}${hint}${sqlFix}`);
+      }
+    } catch (err) {
+      console.error('Auth error:', err);
+      setAuthError('Gagal menghubungkan ke server. Silakan periksa koneksi internet Anda.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -2205,6 +2245,24 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
         <h2 className="text-2xl font-bold text-[#8A9A5B] mb-6 text-center">
           {isRegister ? 'Registrasi EduGram' : 'Login EduGram'}
         </h2>
+
+        {dbStatus && !dbStatus.ok && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm">
+            <p className="font-bold">⚠️ Masalah Koneksi Database</p>
+            <p>Pastikan SUPABASE_URL dan SUPABASE_ANON_KEY sudah diatur di Secrets.</p>
+          </div>
+        )}
+
+        {authError && (
+          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm border border-red-200 animate-in fade-in slide-in-from-top-1">
+            <p className="font-bold flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4" />
+              Gagal {isRegister ? 'Daftar' : 'Login'}
+            </p>
+            <p className="whitespace-pre-wrap mt-1">{authError}</p>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} className="w-full p-3 border rounded-lg" required />
           {isRegister && <input type="text" placeholder="Nama Lengkap" value={fullName} onChange={e => setFullName(e.target.value)} className="w-full p-3 border rounded-lg" required />}
@@ -2224,8 +2282,19 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
             </div>
           )}
           
-          <button type="submit" className="w-full bg-[#8A9A5B] text-white p-3 rounded-lg font-bold hover:bg-[#7A8A4B]">
-            {isRegister ? 'Daftar' : 'Login'}
+          <button 
+            type="submit" 
+            disabled={isLoading}
+            className={`w-full text-white p-3 rounded-lg font-bold transition-all ${isLoading ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#8A9A5B] hover:bg-[#7A8A4B]'}`}
+          >
+            {isLoading ? (
+              <span className="flex items-center justify-center gap-2">
+                <Loader2 className="w-5 h-5 animate-spin" />
+                Memproses...
+              </span>
+            ) : (
+              isRegister ? 'Daftar' : 'Login'
+            )}
           </button>
         </form>
         <button onClick={() => setIsRegister(!isRegister)} className="w-full mt-4 text-[#8A9A5B] font-bold">
@@ -2233,6 +2302,21 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
         </button>
 
         <div className="mt-8 pt-6 border-t border-gray-200">
+          <button 
+            onClick={async () => {
+              try {
+                const res = await fetch('/api/debug/db');
+                const data = await res.json();
+                setAuthError(`🔍 DEBUG DB:\n${JSON.stringify(data, null, 2)}`);
+              } catch (e: any) {
+                setAuthError(`❌ Gagal debug: ${e.message}`);
+              }
+            }}
+            className="w-full mb-4 text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          >
+            Cek Status Database (Debug)
+          </button>
+          
           <p className="text-sm text-center text-gray-500 mb-4">Butuh bantuan? Hubungi Pengembang:</p>
           <p className="text-sm font-bold text-center mb-2">Wahyu Sulaiman, M.Pd.</p>
           <div className="flex justify-center gap-6">
@@ -2302,6 +2386,17 @@ export default function App() {
   const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
   const [lastLevel, setLastLevel] = useState(1);
 
+  // Form state
+  const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
+  const [caption, setCaption] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [isLocationEnabled, setIsLocationEnabled] = useState(false);
+  const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
+  const [isMission, setIsMission] = useState(false);
+  const [gameLevel, setGameLevel] = useState(1);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
   const handleLogin = (profile: UserProfile) => {
     setCurrentUser(profile);
     setIsLoggedIn(true);
@@ -2314,26 +2409,43 @@ export default function App() {
     }
   };
 
-  if (!isLoggedIn) {
-    return <LoginPage onLogin={handleLogin} />;
-  }
-
-  // Form state
-  const [subbab, setSubbab] = useState<Subbab>('Kesehatan Lingkungan');
-  const [caption, setCaption] = useState('');
-  const [imageUrl, setImageUrl] = useState('');
-  const [isLocationEnabled, setIsLocationEnabled] = useState(false);
-  const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
-  const [isMission, setIsMission] = useState(false);
-  const [gameLevel, setGameLevel] = useState(1);
-  const [imageFile, setImageFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
-
-  // Load user from localStorage
+  // Load user from localStorage and refresh from server
   useEffect(() => {
     const savedUser = localStorage.getItem('edugram_user_profile');
     if (savedUser) {
-      setCurrentUser(JSON.parse(savedUser));
+      try {
+        const profile = JSON.parse(savedUser);
+        setCurrentUser(profile);
+        setIsLoggedIn(true);
+        
+        // Refresh user data from server to ensure it's not mock data
+        fetch(`/api/users/${profile.id}`)
+          .then(res => res.json())
+          .then(data => {
+            if (data && !data.error) {
+              const updatedProfile = {
+                ...data,
+                fullName: data.fullName || data.full_name,
+                className: data.className || data.class_name,
+                studentNumber: data.studentNumber || data.student_number,
+                schoolName: data.schoolName || data.school_name || "Sekolah EduGram",
+                profilePictureUrl: data.profilePictureUrl || data.profile_picture_url || "",
+                bio: data.bio || "",
+                role: data.role || (data.id.toString().includes('TEACHER') ? 'teacher' : 'student'),
+                xp: data.xp || 0,
+                interactions: data.interactions || 0,
+                streak: data.streak || 0,
+                followersCount: data.followersCount || 0,
+                followingCount: data.followingCount || 0
+              };
+              setCurrentUser(updatedProfile);
+              localStorage.setItem('edugram_user_profile', JSON.stringify(updatedProfile));
+            }
+          })
+          .catch(err => console.error("Failed to refresh user profile", err));
+      } catch (e) {
+        console.error("Failed to parse saved user", e);
+      }
     }
   }, []);
 
@@ -2348,12 +2460,16 @@ export default function App() {
       
       if (postsRes.ok) {
         const postsData = await postsRes.json();
-        setPosts(postsData);
+        if (Array.isArray(postsData)) {
+          setPosts(postsData);
+        }
       }
       
       if (lbRes.ok) {
         const lbData = await lbRes.json();
-        setLeaderboard(lbData);
+        if (Array.isArray(lbData)) {
+          setLeaderboard(lbData);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch data", err);
@@ -2609,7 +2725,8 @@ export default function App() {
       // Refresh leaderboard in background
       fetch('/api/leaderboard')
         .then(res => res.json())
-        .then(data => setLeaderboard(data));
+        .then(data => setLeaderboard(data))
+        .catch(err => console.error("Failed to refresh leaderboard", err));
         
     } catch (err) {
       console.error("Failed to interact", err);
@@ -2618,6 +2735,10 @@ export default function App() {
   };
 
 
+
+  if (!isLoggedIn) {
+    return <LoginPage onLogin={handleLogin} />;
+  }
 
   if (view === 'profile') {
     return <ProfilePage user={selectedUserForProfile || currentUser} currentUser={currentUser} onBack={() => { setView('feed'); setSelectedUserForProfile(null); }} />;
@@ -2807,9 +2928,14 @@ export default function App() {
                       <button
                         onClick={async () => {
                           if (confirm('Are you sure you want to delete all users?')) {
-                            await fetch('/api/delete-all-users');
-                            alert('All users deleted');
-                            window.location.reload();
+                            try {
+                              await fetch('/api/delete-all-users');
+                              alert('All users deleted');
+                              window.location.reload();
+                            } catch (err) {
+                              console.error("Failed to delete users", err);
+                              alert('Gagal menghapus pengguna');
+                            }
                           }
                         }}
                         className="bg-red-500 text-white p-2 rounded-lg text-xs font-bold hover:bg-red-600"

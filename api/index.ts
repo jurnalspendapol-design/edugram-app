@@ -1,6 +1,8 @@
 import express from "express";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
+console.log('API routes loading...');
+
 // Lazy initialization for Supabase
 let supabaseInstance: SupabaseClient | null = null;
 
@@ -80,6 +82,325 @@ app.use(express.json());
 
 // --- API Routes ---
 
+// Health check / DB status
+app.get("/api/health", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { error } = await supabase.from('users').select('id', { count: 'exact', head: true }).limit(1);
+    if (error) throw error;
+    res.json({ status: "ok" });
+  } catch (error: any) {
+    res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+// Login
+app.post("/api/login", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: "Username dan password wajib diisi" });
+    }
+
+    console.log(`[Login] Attempting login for:`, username);
+    let { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('password', password)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("[Login] Primary login failed, trying minimal select:", error.message);
+      const { data: user2, error: error2 } = await supabase
+        .from('users')
+        .select('username, password')
+        .eq('username', username)
+        .eq('password', password)
+        .maybeSingle();
+      
+      if (error2) {
+        console.error("[Login] All login attempts failed:", error2);
+        return res.status(500).json({ 
+          error: "Gagal login ke database", 
+          message: error2.message,
+          details: error2
+        });
+      }
+      user = user2;
+    }
+
+    if (!user) {
+      return res.status(401).json({ error: "Username atau password salah" });
+    }
+
+    console.log("[Login] User found:", user.username);
+
+    // Format user for frontend
+    const normalizeRole = (role: string, className: string, id: any): 'student' | 'teacher' => {
+      const r = (role || "").toLowerCase();
+      const c = (className || "").toLowerCase();
+      if (r === 'teacher' || r === 'guru' || c === 'guru') return 'teacher';
+      if (id && id.toString().includes('TEACHER')) return 'teacher';
+      return 'student';
+    };
+
+    const formattedUser = {
+      id: user.id || user.username,
+      username: user.username,
+      fullName: user.full_name || user.fullname || user.name || user.nama || user.username,
+      className: user.class_name || user.classname || user.kelas || "10-A",
+      studentNumber: user.student_number || "0",
+      schoolName: user.school_name || "Sekolah EduGram",
+      profilePictureUrl: user.profile_picture_url || "",
+      bio: user.bio || "",
+      role: normalizeRole(user.role || user.peran, user.class_name || user.kelas, user.id || user.username),
+      xp: user.xp || 0,
+      interactions: 0,
+      streak: 0,
+      followersCount: 0,
+      followingCount: 0
+    };
+
+    res.json(formattedUser);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Debug DB
+app.get("/api/debug/db", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { data, error } = await supabase.from('users').select('*').limit(1);
+    
+    let columns: string[] = [];
+    if (data && data.length > 0) {
+      columns = Object.keys(data[0]);
+    } else if (!error) {
+      // Jika tabel kosong, coba ambil satu baris dengan select('*')
+      // Tapi biasanya jika kosong ya kosong.
+    }
+
+    res.json({
+      status: error ? 'error' : 'ok',
+      table: 'users',
+      columns: columns.length > 0 ? columns : 'Tabel kosong atau kolom tidak terdeteksi',
+      error: error ? error.message : null,
+      details: error || null
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// Register
+app.post("/api/register", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const { username, fullName, password, role, className } = req.body;
+
+    if (!username || !fullName || !password) {
+      return res.status(400).json({ error: "Data tidak lengkap" });
+    }
+
+    // 1. Cek apakah username sudah ada
+    const { data: existingUser } = await supabase
+      .from('users')
+      .select('username')
+      .eq('username', username)
+      .maybeSingle();
+
+    if (existingUser) {
+      return res.status(400).json({ error: "Username sudah digunakan" });
+    }
+
+    // 2. Deteksi kolom yang tersedia di tabel 'users'
+    console.log(`[Register] Detecting schema for 'users' table...`);
+    const { data: sampleData, error: schemaError } = await supabase.from('users').select('*').limit(1);
+    
+    if (schemaError) {
+      console.warn("[Register] Schema detection warning:", schemaError.message);
+    }
+
+    const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+    console.log(`[Register] Available columns:`, availableColumns);
+    
+    const newUser: any = {
+      username: username,
+      password: password
+    };
+
+    // Mapping Nama Lengkap
+    if (availableColumns.length > 0) {
+      if (availableColumns.includes('full_name')) newUser.full_name = fullName;
+      else if (availableColumns.includes('fullname')) newUser.fullname = fullName;
+      else if (availableColumns.includes('name')) newUser.name = fullName;
+      else if (availableColumns.includes('nama')) newUser.nama = fullName;
+
+      // Mapping Kelas
+      if (availableColumns.includes('class_name')) newUser.class_name = className || '10-A';
+      else if (availableColumns.includes('classname')) newUser.classname = className || '10-A';
+      else if (availableColumns.includes('kelas')) newUser.kelas = className || '10-A';
+
+      // Mapping Role
+      if (availableColumns.includes('role')) newUser.role = role || 'student';
+      else if (availableColumns.includes('peran')) newUser.peran = role || 'student';
+
+      // Mapping XP & Created At
+      if (availableColumns.includes('xp')) newUser.xp = 0;
+      if (availableColumns.includes('created_at')) newUser.created_at = new Date().toISOString();
+      
+      // Mapping tambahan yang mungkin wajib
+      if (availableColumns.includes('student_number')) newUser.student_number = "0";
+      if (availableColumns.includes('school_name')) newUser.school_name = "Sekolah EduGram";
+    } else {
+      // Fallback jika tabel kosong/kolom tidak terdeteksi: gunakan nama kolom paling umum
+      newUser.full_name = fullName;
+      newUser.class_name = className || '10-A';
+      newUser.role = role || 'student';
+      newUser.xp = 0;
+      newUser.created_at = new Date().toISOString();
+    }
+
+    // 3. Coba Insert
+    // Kita coba tanpa ID manual dulu agar DB yang handle (UUID/Serial)
+    // Gunakan select('id, username') secara eksis untuk menghindari masalah cache schema pada '*'
+    console.log(`[Register] Attempting primary insert with columns:`, Object.keys(newUser));
+    let { error, data } = await supabase.from('users').insert([newUser]).select('id, username');
+
+    const isRLSError = (err: any) => err && (err.code === '42501' || (err.message && err.message.toLowerCase().includes('row-level security')));
+    const isIdNotNullError = (err: any) => err && (err.code === '23502' && (err.message && err.message.includes('"id"')));
+
+    if (error) {
+      console.warn("[Register] Primary insert failed:", error.message);
+      
+      if (isRLSError(error)) {
+        return res.status(403).json({
+          error: "Akses Ditolak (RLS)",
+          message: error.message,
+          details: error,
+          hint: "Row-Level Security (RLS) aktif di tabel 'users' tetapi tidak ada kebijakan (policy) yang mengizinkan pendaftaran. Silakan jalankan SQL fix di Dashboard Supabase."
+        });
+      }
+
+      if (isIdNotNullError(error)) {
+        console.log("[Register] ID not null error detected. Trying with manual UUID...");
+        const manualId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+        const { error: errorId, data: dataId } = await supabase.from('users').insert([{ ...newUser, id: manualId }]).select('id, username');
+        if (!errorId) {
+          data = dataId;
+          error = null;
+        } else {
+          console.warn("[Register] Manual ID insert failed:", errorId.message);
+          error = errorId;
+        }
+      }
+    }
+
+    if (error) {
+      // Fallback 1: Coba dengan 'full_name'
+      console.log("[Register] Trying Fallback 1 (full_name)...");
+      const { error: error2, data: data2 } = await supabase.from('users').insert([{ username, password, full_name: fullName }]).select('id, username');
+      
+      if (error2) {
+        console.warn("[Register] Fallback 1 failed:", error2.message);
+        
+        if (isRLSError(error2)) {
+          return res.status(403).json({
+            error: "Akses Ditolak (RLS)",
+            message: error2.message,
+            details: error2,
+            hint: "Row-Level Security (RLS) aktif. Jalankan SQL fix untuk mengizinkan pendaftaran."
+          });
+        }
+
+        // Fallback 2: Coba dengan 'name'
+        console.log("[Register] Trying Fallback 2 (name)...");
+        const { error: error3, data: data3 } = await supabase.from('users').insert([{ username, password, name: fullName }]).select('id, username');
+        
+        if (error3) {
+          console.warn("[Register] Fallback 2 failed:", error3.message);
+          // Fallback 3: Coba dengan 'fullname'
+          console.log("[Register] Trying Fallback 3 (fullname)...");
+          const { error: error4, data: data4 } = await supabase.from('users').insert([{ username, password, fullname: fullName }]).select('id, username');
+          
+          if (error4) {
+            console.warn("[Register] Fallback 3 failed:", error4.message);
+            // Fallback 4: Coba dengan 'nama'
+            console.log("[Register] Trying Fallback 4 (nama)...");
+            const { error: error5, data: data5 } = await supabase.from('users').insert([{ username, password, nama: fullName }]).select('id, username');
+            
+            if (error5) {
+              console.warn("[Register] Fallback 4 failed:", error5.message);
+              // FALLBACK TERAKHIR: Hanya username dan password
+              console.warn("[Register] Trying final minimal fallback (username, password only)...");
+              const { error: errorFinal, data: dataFinal } = await supabase.from('users').insert([{ username, password }]).select('id, username');
+              
+              if (errorFinal) {
+                console.error("[Register] ALL insertion attempts failed:", errorFinal);
+                
+                // Jika masih gagal, coba insert TANPA select sama sekali (mungkin cache schema benar-benar rusak)
+                console.log("[Register] Trying insertion WITHOUT select...");
+                const { error: errorNoSelect } = await supabase.from('users').insert([{ username, password }]);
+                
+                if (errorNoSelect) {
+                  return res.status(500).json({ 
+                    error: `Gagal mendaftar ke database.`,
+                    message: errorNoSelect.message,
+                    details: errorNoSelect,
+                    hint: "Pastikan tabel 'users' ada di Supabase. Jika RLS aktif, Anda harus menambahkan policy untuk INSERT."
+                  });
+                }
+                
+                // Jika tanpa select berhasil, kita buat data manual
+                data = [{ id: username, username: username }];
+              } else {
+                data = dataFinal;
+              }
+            } else {
+              data = data5;
+            }
+          } else {
+            data = data4;
+          }
+        } else {
+          data = data3;
+        }
+      } else {
+        data = data2;
+      }
+    }
+
+    const savedUser = (data && data[0]) || newUser;
+    console.log("[Register] Successfully registered user:", savedUser.username);
+
+    // Format untuk frontend
+    const normalizeRole = (role: string, className: string, id: any): 'student' | 'teacher' => {
+      const r = (role || "").toLowerCase();
+      const c = (className || "").toLowerCase();
+      if (r === 'teacher' || r === 'guru' || c === 'guru') return 'teacher';
+      return 'student';
+    };
+
+    const formattedUser = {
+      id: savedUser.id || savedUser.username,
+      username: savedUser.username,
+      fullName: savedUser.full_name || savedUser.fullname || savedUser.name || savedUser.nama || fullName,
+      className: savedUser.class_name || savedUser.classname || savedUser.kelas || className,
+      role: normalizeRole(savedUser.role || savedUser.peran, savedUser.class_name || savedUser.kelas, savedUser.id),
+      xp: savedUser.xp || 0
+    };
+
+    res.json(formattedUser);
+  } catch (error: any) {
+    console.error("Register crash:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 
 
@@ -145,20 +466,34 @@ app.get("/api/users/:id", async (req, res) => {
     const supabase = getSupabase();
     const viewerId = req.query.viewerId as string;
     
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, username, full_name, class_name, student_number, xp')
-      .eq('id', req.params.id)
-      .single();
+    // Try to find by id first, if it fails or id is missing, try by username
+    let query = supabase.from('users').select('*');
+    
+    // If req.params.id looks like a username (no UUID format and no numeric ID) 
+    // or if we suspect id column is missing, we can try both.
+    // For now, let's try to be smart: try id = req.params.id
+    let { data: user, error } = await query.eq('id', req.params.id).maybeSingle();
 
     if (error || !user) {
-      return res.status(404).json({ error: "User tidak ditemukan" });
+      // Try by username as fallback
+      const { data: userByUsername, error: errorByUsername } = await supabase
+        .from('users')
+        .select('*')
+        .eq('username', req.params.id)
+        .maybeSingle();
+      
+      if (errorByUsername || !userByUsername) {
+        return res.status(404).json({ error: "User tidak ditemukan" });
+      }
+      user = userByUsername;
     }
+
+    const userId = user.id || user.username;
 
     // Fetch user stats in parallel
     const [postsResult, commentsResult] = await Promise.all([
-      supabase.from('posts').select('insightful, ask, support, is_scientific').eq('author_id', user.id),
-      supabase.from('comments').select('id').eq('author_id', user.id)
+      supabase.from('posts').select('insightful, ask, support, is_scientific').eq('author_id', userId),
+      supabase.from('comments').select('id').eq('author_id', userId)
     ]);
     
     const userPosts = postsResult.data;
@@ -228,6 +563,14 @@ app.get("/api/users/:id", async (req, res) => {
       }
     }
 
+    const normalizeRole = (role: string, className: string, id: any): 'student' | 'teacher' => {
+      const r = (role || "").toLowerCase();
+      const c = (className || "").toLowerCase();
+      if (r === 'teacher' || r === 'guru' || c === 'guru') return 'teacher';
+      if (id && id.toString().includes('TEACHER')) return 'teacher';
+      return 'student';
+    };
+
     res.json({ 
       ...user, 
       fullName: user.full_name,
@@ -240,7 +583,7 @@ app.get("/api/users/:id", async (req, res) => {
       streak,
       lastPostDate,
       xp: finalXp,
-      role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
+      role: normalizeRole((user as any).role, user.class_name, user.id),
       followersCount,
       followingCount,
       isFollowing
@@ -976,7 +1319,7 @@ app.post("/api/missions/complete", async (req, res) => {
 app.get("/api/leaderboard", async (req, res) => {
   try {
     const supabase = getSupabase();
-    const { data: users, error: usersError } = await supabase.from('users').select('id, username, full_name, class_name, xp') as { data: any[], error: any };
+    const { data: users, error: usersError } = await supabase.from('users').select('*') as { data: any[], error: any };
     const { data: posts, error: postsError } = await supabase.from('posts').select('author_id, insightful, ask, support, is_scientific') as { data: any[], error: any };
     const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id') as { data: any[], error: any };
 
@@ -1006,11 +1349,11 @@ app.get("/api/leaderboard", async (req, res) => {
       }
 
       return {
-        id: u.id,
+        id: u.id || u.username,
         username: u.username,
-        name: u.full_name,
-        className: u.class_name,
-        schoolName: (u as any).school_name || "",
+        name: u.full_name || u.fullname || u.name || u.nama || u.username,
+        className: u.class_name || u.classname || u.kelas || "10-A",
+        schoolName: (u as any).school_name || "Sekolah EduGram",
         xp: finalXp,
         interactions: interactionsReceived
       };
