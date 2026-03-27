@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -2155,15 +2155,10 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
   const [fullName, setFullName] = useState('');
   const [password, setPassword] = useState('');
   const [isTeacher, setIsTeacher] = useState(false);
-  const [teacherCode, setTeacherCode] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isRegister) {
-      if (isTeacher && teacherCode !== 'whyedugram') {
-        alert('Kode guru salah!');
-        return;
-      }
       // Simulate registration
       const newUser: UserProfile = {
         id: Date.now().toString(),
@@ -2221,7 +2216,11 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
                 <input type="checkbox" checked={isTeacher} onChange={e => setIsTeacher(e.target.checked)} />
                 Daftar sebagai Guru
               </label>
-              {isTeacher && <input type="text" placeholder="Kode Guru (whyedugram)" value={teacherCode} onChange={e => setTeacherCode(e.target.value)} className="w-full p-3 border rounded-lg" required />}
+              {isTeacher && (
+                <p className="text-sm text-gray-600 italic">
+                  Untuk mendaftar sebagai guru, silakan hubungi pengembang.
+                </p>
+              )}
             </div>
           )}
           
@@ -2232,10 +2231,27 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
         <button onClick={() => setIsRegister(!isRegister)} className="w-full mt-4 text-[#8A9A5B] font-bold">
           {isRegister ? 'Sudah punya akun? Login' : 'Belum punya akun? Daftar'}
         </button>
+
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <p className="text-sm text-center text-gray-500 mb-4">Butuh bantuan? Hubungi Pengembang:</p>
+          <p className="text-sm font-bold text-center mb-2">Wahyu Sulaiman, M.Pd.</p>
+          <div className="flex justify-center gap-6">
+            <a href="https://wa.me/6285737069855" target="_blank" rel="noopener noreferrer" className="text-green-600 hover:text-green-800 transition-transform hover:scale-110">
+              <Phone className="w-6 h-6" />
+            </a>
+            <a href="mailto:sulaimanwahyu@gmail.com" className="text-red-600 hover:text-red-800 transition-transform hover:scale-110">
+              <Mail className="w-6 h-6" />
+            </a>
+            <a href="https://instagram.com/wahyusulaiman101" target="_blank" rel="noopener noreferrer" className="text-pink-600 hover:text-pink-800 transition-transform hover:scale-110">
+              <Instagram className="w-6 h-6" />
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );
 };
+const GUEST_USER: UserProfile = {
   id: 'guest',
   username: 'pengunjung',
   fullName: 'Pengunjung',
@@ -2285,6 +2301,18 @@ export default function App() {
   const [activeMissionPostId, setActiveMissionPostId] = useState<string | null>(null);
   const [isLevelUpOpen, setIsLevelUpOpen] = useState(false);
   const [lastLevel, setLastLevel] = useState(1);
+
+  const handleLogin = (profile: UserProfile) => {
+    setCurrentUser(profile);
+    setIsLoggedIn(true);
+    localStorage.setItem('edugram_user_profile', JSON.stringify(profile));
+    
+    // Check if tutorial has been seen
+    const hasSeenTutorial = localStorage.getItem(`edugram_tutorial_seen_${profile.id}`);
+    if (!hasSeenTutorial) {
+      setIsTutorialOpen(true);
+    }
+  };
 
   if (!isLoggedIn) {
     return <LoginPage onLogin={handleLogin} />;
@@ -2370,18 +2398,6 @@ export default function App() {
       }
     } catch (err) {
       console.error("Failed to complete mission", err);
-    }
-  };
-
-  const handleLogin = (profile: UserProfile) => {
-    setCurrentUser(profile);
-    setIsLoggedIn(true);
-    localStorage.setItem('edugram_user_profile', JSON.stringify(profile));
-    
-    // Check if tutorial has been seen
-    const hasSeenTutorial = localStorage.getItem(`edugram_tutorial_seen_${profile.id}`);
-    if (!hasSeenTutorial) {
-      setIsTutorialOpen(true);
     }
   };
 
