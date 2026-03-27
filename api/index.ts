@@ -90,7 +90,8 @@ app.get("/api/health", async (req, res) => {
     if (error) throw error;
     res.json({ status: "ok" });
   } catch (error: any) {
-    res.status(500).json({ status: "error", message: error.message });
+    console.error("[Health Check Error]:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -124,8 +125,7 @@ app.post("/api/login", async (req, res) => {
       if (error2) {
         console.error("[Login] All login attempts failed:", error2);
         return res.status(500).json({ 
-          error: "Gagal login ke database", 
-          message: error2.message,
+          error: "Gagal login ke database: " + error2.message,
           details: error2
         });
       }
@@ -166,6 +166,7 @@ app.post("/api/login", async (req, res) => {
 
     res.json(formattedUser);
   } catch (error: any) {
+    console.error("[Login Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -192,6 +193,7 @@ app.get("/api/debug/db", async (req, res) => {
       details: error || null
     });
   } catch (e: any) {
+    console.error("[Debug DB Error]:", e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -356,6 +358,7 @@ app.post("/api/register", async (req, res) => {
                 const { error: errorNoSelect } = await supabase.from('users').insert([{ username, password }]);
                 
                 if (errorNoSelect) {
+                  console.error("[Register Error Final]:", errorNoSelect);
                   return res.status(500).json({ 
                     error: `Gagal mendaftar ke database.`,
                     message: errorNoSelect.message,
@@ -428,6 +431,7 @@ app.get("/api/delete-all-users", async (req, res) => {
 
     res.json({ success: true, message: "All users deleted" });
   } catch (error: any) {
+    console.error("[Delete All Users Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -465,6 +469,7 @@ app.get("/api/users/:id/followers", async (req, res) => {
 
     res.json(formattedFollowers);
   } catch (error: any) {
+    console.error("[Get Followers Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -598,6 +603,7 @@ app.get("/api/users/:id", async (req, res) => {
       isFollowing
     });
   } catch (error: any) {
+    console.error("[Get User Profile Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
@@ -617,9 +623,13 @@ app.post("/api/users/:id/profile", async (req, res) => {
       })
       .eq('id', userId);
 
-    if (error) return res.status(500).json({ error: "Gagal memperbarui profil" });
+    if (error) {
+      console.error("[Update Profile Error]:", error);
+      return res.status(500).json({ error: "Gagal memperbarui profil" });
+    }
     res.json({ success: true });
   } catch (error: any) {
+    console.error("[Update User Profile Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -673,6 +683,7 @@ app.post("/api/users/:id/follow", async (req, res) => {
       res.json({ success: true, action: 'followed' });
     }
   } catch (error: any) {
+    console.error("[Toggle Follow Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -688,6 +699,7 @@ app.get("/api/groups/:id/messages", async (req, res) => {
     const messages = fallbackGroupMessages[groupId] || [];
     res.json(messages);
   } catch (error: any) {
+    console.error("[Get Group Messages Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -711,6 +723,7 @@ app.post("/api/groups/:id/messages", async (req, res) => {
     fallbackGroupMessages[groupId].push(newMessage);
     res.json({ success: true, message: newMessage });
   } catch (error: any) {
+    console.error("[Create Group Message Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -748,6 +761,7 @@ app.post("/api/groups", async (req, res) => {
 
     res.json({ success: true, group: newGroup });
   } catch (error: any) {
+    console.error("[Create Group Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -767,6 +781,7 @@ app.get("/api/groups", async (req, res) => {
     });
     res.json(allGroups);
   } catch (error: any) {
+    console.error("[Get Groups Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -783,6 +798,7 @@ app.get("/api/groups/:id", async (req, res) => {
       members
     });
   } catch (error: any) {
+    console.error("[Get Group Details Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -814,6 +830,7 @@ app.post("/api/groups/:id/join", async (req, res) => {
 
     res.json({ success: true, status });
   } catch (error: any) {
+    console.error("[Join Group Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -843,6 +860,7 @@ app.put("/api/groups/:id/members/:userId", async (req, res) => {
 
     res.json({ success: true });
   } catch (error: any) {
+    console.error("[Manage Group Member Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -873,6 +891,7 @@ app.get("/api/posts", async (req, res) => {
     const { data: posts, error } = await query;
       
     if (error) {
+      console.error("[Get Posts Error]:", error);
       return res.status(500).json({ error: "Gagal mengambil postingan" });
     }
 
@@ -916,6 +935,7 @@ app.get("/api/posts", async (req, res) => {
 
     res.json(formattedPosts);
   } catch (error: any) {
+    console.error("[Get Posts Catch Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
@@ -953,6 +973,7 @@ app.get("/api/posts/:postId/comments", async (req, res) => {
 
     res.json(formattedComments);
   } catch (error: any) {
+    console.error("[Get Comments Error]:", error);
     res.json([]); // Return empty on catch
   }
 });
@@ -977,7 +998,10 @@ app.post("/api/posts/:postId/comments", async (req, res) => {
         created_at: new Date().toISOString()
       }]);
 
-    if (error) return res.status(500).json({ error: "Gagal mengirim komentar: " + error.message });
+    if (error) {
+      console.error("[Create Comment Error]:", error);
+      return res.status(500).json({ error: "Gagal mengirim komentar: " + error.message });
+    }
 
     // Add XP to commenter
     const { data: user } = await supabase.from('users').select('xp').eq('id', authorId).single();
@@ -988,6 +1012,7 @@ app.post("/api/posts/:postId/comments", async (req, res) => {
 
     res.json({ success: true, id });
   } catch (error: any) {
+    console.error("[Create Comment Catch Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1020,6 +1045,7 @@ app.post("/api/posts/:postId/report", async (req, res) => {
     
     res.json({ success: true });
   } catch (error: any) {
+    console.error("[Report Post Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
@@ -1072,7 +1098,7 @@ app.post("/api/posts", async (req, res) => {
     }
 
     if (error) {
-      console.error("Post creation error details:", error);
+      console.error("[Create Post Error]:", error);
       
       // Fallback for mission columns
       if (error.message.includes('is_mission') || error.code === '42703') {
@@ -1085,6 +1111,7 @@ app.post("/api/posts", async (req, res) => {
         }
       }
 
+      console.error("[Create Post Error Final]:", error);
       return res.status(500).json({ 
         error: "Gagal membuat postingan: " + error.message,
         details: error.details,
@@ -1126,6 +1153,7 @@ app.post("/api/posts", async (req, res) => {
 
     res.json({ success: true, id, user: updatedUser });
   } catch (error: any) {
+    console.error("[Create Post Catch Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
@@ -1158,11 +1186,13 @@ app.put("/api/posts/:id", async (req, res) => {
       .eq('id', postId);
 
     if (updateError) {
+      console.error("[Update Post Error]:", updateError);
       return res.status(500).json({ error: "Gagal memperbarui postingan" });
     }
 
     res.json({ success: true });
   } catch (error: any) {
+    console.error("[Update Post Catch Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1195,11 +1225,13 @@ app.delete("/api/posts/:id", async (req, res) => {
       .eq('id', postId);
 
     if (deleteError) {
+      console.error("[Delete Post Error]:", deleteError);
       return res.status(500).json({ error: "Gagal menghapus postingan" });
     }
 
     res.json({ success: true });
   } catch (error: any) {
+    console.error("[Delete Post Catch Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1284,9 +1316,11 @@ app.post("/api/posts/:id/interact", async (req, res) => {
       }
       res.json({ success: true, action: existingInteraction ? 'removed' : 'added', count: newCount });
     } else {
+      console.error("[Interact Post Update Error]:", updateError);
       res.status(500).json({ error: "Gagal melakukan interaksi" });
     }
   } catch (error: any) {
+    console.error("[Interact Post Catch Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
@@ -1327,6 +1361,7 @@ app.post("/api/missions/complete", async (req, res) => {
       }
     });
   } catch (error: any) {
+    console.error("[Mission Complete Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1340,6 +1375,7 @@ app.get("/api/leaderboard", async (req, res) => {
     const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id') as { data: any[], error: any };
 
     if (usersError || postsError || commentsError) {
+      console.error("[Leaderboard Fetch Error]:", { usersError, postsError, commentsError });
       return res.status(500).json({ error: "Gagal mengambil leaderboard" });
     }
 
@@ -1381,6 +1417,7 @@ app.get("/api/leaderboard", async (req, res) => {
 
     res.json(leaderboard);
   } catch (error: any) {
+    console.error("[Leaderboard Catch Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
@@ -1408,9 +1445,13 @@ app.post("/api/assignments", async (req, res) => {
         created_at: new Date().toISOString() 
       }]);
 
-    if (error) return res.status(500).json({ error: "Gagal membuat tugas" });
+    if (error) {
+      console.error("[Create Assignment Error]:", error);
+      return res.status(500).json({ error: "Gagal membuat tugas" });
+    }
     res.json({ success: true, id });
   } catch (error: any) {
+    console.error("[Create Assignment Catch Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1430,9 +1471,13 @@ app.delete("/api/users/:id", async (req, res) => {
     }
 
     const { error } = await supabase.from('users').delete().eq('id', req.params.id);
-    if (error) return res.status(500).json({ error: "Gagal menghapus siswa" });
+    if (error) {
+      console.error("[Delete Student Error]:", error);
+      return res.status(500).json({ error: "Gagal menghapus siswa" });
+    }
     res.json({ success: true });
   } catch (error: any) {
+    console.error("[Delete Student Catch Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1471,6 +1516,7 @@ app.get("/api/search", async (req, res) => {
       groups: groups || []
     });
   } catch (error: any) {
+    console.error("[Search Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });

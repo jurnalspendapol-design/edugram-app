@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2 } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2, Info } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -738,9 +738,18 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
 
   const fetchProfile = () => {
     Promise.all([
-      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`).then(res => res.json()),
-      fetch(`/api/users/${user.id}/followers`).then(res => res.json()).catch(() => []),
-      fetch(`/api/posts?authorId=${user.id}`).then(res => res.json()).catch(() => [])
+      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`).then(res => {
+        if (!res.ok) throw new Error('Gagal mengambil profil');
+        return res.json();
+      }),
+      fetch(`/api/users/${user.id}/followers`).then(res => {
+        if (!res.ok) return [];
+        return res.json();
+      }).catch(() => []),
+      fetch(`/api/posts?authorId=${user.id}`).then(res => {
+        if (!res.ok) return [];
+        return res.json();
+      }).catch(() => [])
     ])
       .then(([profileRes, followersRes, postsRes]) => {
         setProfileData(profileRes);
@@ -810,9 +819,13 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
         setIsEditing(false);
         setEditProfilePicture(null);
         fetchProfile();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal memperbarui profil');
       }
     } catch (err) {
       console.error(err);
+      alert('Terjadi kesalahan koneksi saat memperbarui profil');
     } finally {
       setIsUploading(false);
     }
@@ -1171,9 +1184,13 @@ const AssignmentModal = ({
       if (res.ok) {
         onClose();
         alert('Tugas berhasil dibuat!');
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal membuat tugas');
       }
     } catch (err) {
       console.error(err);
+      alert('Terjadi kesalahan koneksi saat membuat tugas');
     }
   };
 
@@ -1384,7 +1401,10 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
       const res = await fetch(`/api/posts/${postId}/comments`);
       if (res.ok) {
         const data = await res.json();
-        setComments(data);
+        setComments(Array.isArray(data) ? data : []);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Fetch comments error:', errorData.error);
       }
     } catch (err) {
       console.error("Failed to fetch comments", err);
@@ -1629,9 +1649,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
   const fetchGroups = async () => {
     try {
       const res = await fetch(`/api/groups?userId=${user.id}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Gagal mengambil daftar grup');
+      }
       const data = await res.json();
-      setGroups(data);
-    } catch (e) {
+      setGroups(Array.isArray(data) ? data : []);
+    } catch (e: any) {
       console.error(e);
     }
   };
@@ -1649,9 +1673,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
   const fetchGroupDetails = async (groupId: string) => {
     try {
       const res = await fetch(`/api/groups/${groupId}`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Gagal mengambil detail grup');
+      }
       const data = await res.json();
       setGroupDetails(data);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
     }
   };
@@ -1659,9 +1687,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
   const fetchMessages = async (groupId: string) => {
     try {
       const res = await fetch(`/api/groups/${groupId}/messages`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Gagal mengambil pesan');
+      }
       const data = await res.json();
-      setMessages(data);
-    } catch (e) {
+      setMessages(Array.isArray(data) ? data : []);
+    } catch (e: any) {
       console.error(e);
     }
   };
@@ -1700,9 +1732,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
       if (res.ok) {
         setNewMessageText('');
         fetchMessages(selectedGroup.id);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal mengirim pesan');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert('Terjadi kesalahan koneksi saat mengirim pesan');
     }
   };
 
@@ -1723,9 +1759,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
         setIsCreating(false);
         setNewGroup({ name: '', description: '', type: 'school', privacy: 'public' });
         fetchGroups();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal membuat grup');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert('Terjadi kesalahan koneksi saat membuat grup');
     }
   };
 
@@ -1745,9 +1785,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
         if (selectedGroup && selectedGroup.id === groupId) {
           fetchGroupDetails(groupId);
         }
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal bergabung dengan grup');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert('Terjadi kesalahan koneksi saat mencoba bergabung');
     }
   };
 
@@ -1761,9 +1805,13 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
       if (res.ok) {
         fetchGroupDetails(groupId);
         fetchGroups();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal memproses aksi anggota');
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
+      alert('Terjadi kesalahan koneksi saat memproses aksi anggota');
     }
   };
 
@@ -2073,10 +2121,14 @@ const GlobalSearch = ({
       const fetchResults = async () => {
         try {
           const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+          if (!res.ok) {
+            const errorData = await res.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Gagal melakukan pencarian');
+          }
           const data = await res.json();
           setResults(data);
           setIsOpen(true);
-        } catch (e) {
+        } catch (e: any) {
           console.error(e);
         }
       };
@@ -2183,9 +2235,12 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
 
   useEffect(() => {
     fetch('/api/health')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error('Gagal terhubung ke API');
+        return res.json();
+      })
       .then(data => setDbStatus({ ok: data.status === 'ok' }))
-      .catch(err => setDbStatus({ ok: false, message: 'Gagal terhubung ke API' }));
+      .catch(err => setDbStatus({ ok: false, message: err.message || 'Gagal terhubung ke API' }));
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -2280,10 +2335,21 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
         )}
 
         {authError && (
-          <div className="mb-4 p-3 bg-red-100 text-red-700 rounded-lg text-sm border border-red-200 animate-in fade-in slide-in-from-top-1">
-            <p className="font-bold flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4" />
-              Gagal {isRegister ? 'Daftar' : 'Login'}
+          <div className={`mb-4 p-3 ${authError.includes('🔍') ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-red-100 text-red-700 border-red-200'} rounded-lg text-sm border animate-in fade-in slide-in-from-top-1 relative group`}>
+            <button 
+              onClick={() => setAuthError('')} 
+              className="absolute top-2 right-2 p-1 hover:bg-black/5 rounded-full transition-colors"
+              title="Tutup"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <p className="font-bold flex items-center gap-2 pr-6">
+              {authError.includes('🔍') ? (
+                <Info className="w-4 h-4" />
+              ) : (
+                <AlertTriangle className="w-4 h-4" />
+              )}
+              {authError.includes('🔍') ? 'Informasi Database' : authError.includes('❌') ? 'Gagal Debug' : `Gagal ${isRegister ? 'Daftar' : 'Login'}`}
             </p>
             <p className="whitespace-pre-wrap mt-1">{authError}</p>
           </div>
@@ -2351,6 +2417,10 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
             onClick={async () => {
               try {
                 const res = await fetch('/api/debug/db');
+                if (!res.ok) {
+                  const errorData = await res.json().catch(() => ({}));
+                  throw new Error(errorData.error || 'Gagal mengambil status database');
+                }
                 const data = await res.json();
                 setAuthError(`🔍 DEBUG DB:\n${JSON.stringify(data, null, 2)}`);
               } catch (e: any) {
@@ -2465,7 +2535,10 @@ export default function App() {
         
         // Refresh user data from server to ensure it's not mock data
         fetch(`/api/users/${profile.id}`)
-          .then(res => res.json())
+          .then(res => {
+            if (!res.ok) throw new Error('Gagal memuat profil');
+            return res.json();
+          })
           .then(data => {
             if (data && !data.error) {
               const updatedProfile = {
@@ -2761,16 +2834,24 @@ export default function App() {
         return p;
       }));
 
-      await fetch(`/api/posts/${postId}/interact`, {
+      const res = await fetch(`/api/posts/${postId}/interact`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ type, userId: currentUser.id })
       });
       
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        console.error('Interaction error:', errorData.error);
+      }
+      
       // Refresh leaderboard in background
       fetch('/api/leaderboard')
-        .then(res => res.json())
-        .then(data => setLeaderboard(data))
+        .then(res => {
+          if (!res.ok) throw new Error('Gagal memuat leaderboard');
+          return res.json();
+        })
+        .then(data => setLeaderboard(Array.isArray(data) ? data : []))
         .catch(err => console.error("Failed to refresh leaderboard", err));
         
     } catch (err) {
