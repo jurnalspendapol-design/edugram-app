@@ -1033,6 +1033,10 @@ app.get("/api/posts", async (req, res) => {
       return res.status(500).json({ error: "Gagal mengambil postingan" });
     }
 
+    if (!posts) {
+      return res.json([]);
+    }
+
     const postIds = posts.map(p => p.id);
     
     // Fetch comment counts and user interactions for these posts in parallel

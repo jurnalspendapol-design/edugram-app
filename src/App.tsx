@@ -2613,6 +2613,8 @@ export default function App() {
         if (Array.isArray(postsData)) {
           setPosts(postsData);
         }
+      } else {
+        console.error("Failed to fetch posts:", await postsRes.text());
       }
       
       if (lbRes.ok) {
@@ -2620,6 +2622,8 @@ export default function App() {
         if (Array.isArray(lbData)) {
           setLeaderboard(lbData);
         }
+      } else {
+        console.error("Failed to fetch leaderboard:", await lbRes.text());
       }
     } catch (err) {
       console.error("Failed to fetch data", err);
