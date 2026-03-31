@@ -31,6 +31,26 @@ function getSupabase(): SupabaseClient {
   return supabaseInstance;
 }
 
+// Cache for table schemas
+const schemaCache: Record<string, string[]> = {};
+
+async function getTableColumns(supabase: SupabaseClient, tableName: string): Promise<string[]> {
+  if (schemaCache[tableName]) return schemaCache[tableName];
+  
+  console.log(`[Schema] Detecting schema for '${tableName}' table...`);
+  const { data, error } = await supabase.from(tableName).select('*').limit(1);
+  
+  if (error) {
+    console.warn(`[Schema] Schema detection warning for '${tableName}':`, error.message);
+    return [];
+  }
+  
+  const columns = data && data.length > 0 ? Object.keys(data[0]) : [];
+  schemaCache[tableName] = columns;
+  console.log(`[Schema] Detected columns for '${tableName}':`, columns);
+  return columns;
+}
+
 async function getUserStreakInfo(userId: string, supabase: SupabaseClient) {
   try {
     const { data: posts, error } = await supabase
@@ -344,14 +364,7 @@ app.post("/api/register", async (req, res) => {
     }
 
     // 2. Deteksi kolom yang tersedia di tabel 'users'
-    console.log(`[Register] Detecting schema for 'users' table...`);
-    const { data: sampleData, error: schemaError } = await supabase.from('users').select('*').limit(1);
-    
-    if (schemaError) {
-      console.warn("[Register] Schema detection warning:", schemaError.message);
-    }
-
-    const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+    const availableColumns = await getTableColumns(supabase, 'users');
     console.log(`[Register] Available columns:`, availableColumns);
     
     const newUser: any = {
@@ -1187,14 +1200,7 @@ app.post("/api/posts", async (req, res) => {
     }
 
     // 1. Detect available columns in 'posts' table
-    console.log(`[Create Post] Detecting schema for 'posts' table...`);
-    const { data: sampleData, error: schemaError } = await supabase.from('posts').select('*').limit(1);
-    
-    if (schemaError) {
-      console.warn("[Create Post] Schema detection warning:", schemaError.message);
-    }
-
-    const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+    const availableColumns = await getTableColumns(supabase, 'posts');
     console.log(`[Create Post] Available columns:`, availableColumns);
 
     const createdAt = new Date().toISOString();
