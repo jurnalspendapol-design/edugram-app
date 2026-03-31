@@ -649,7 +649,7 @@ app.get("/api/users/:id", async (req, res) => {
 
     // Sync XP to database if it's higher
     if (finalXp > ((user as any).xp || 0)) {
-      supabase.from('users').update({ xp: finalXp }).eq('id', user.id).then();
+      Promise.resolve(supabase.from('users').update({ xp: finalXp }).eq('id', user.id)).catch(err => console.error('Failed to update XP:', err));
     }
 
     const { streak, lastPostDate } = await getUserStreakInfo(user.id, supabase);
@@ -1568,7 +1568,7 @@ app.get("/api/leaderboard", async (req, res) => {
 
       // Sync XP to database if it's higher
       if (finalXp > ((u as any).xp || 0)) {
-        supabase.from('users').update({ xp: finalXp }).eq('id', u.id).then();
+        Promise.resolve(supabase.from('users').update({ xp: finalXp }).eq('id', u.id)).catch(err => console.error('Failed to update XP:', err));
       }
 
       return {
