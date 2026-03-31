@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import BangEko from './components/BangEko';
 import ReactMarkdown from 'react-markdown';
 import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2, Info } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
@@ -142,16 +143,6 @@ const DAILY_QUESTS = [
   "Pilah sampah organik dan anorganik di rumah! ♻️" // Sabtu
 ];
 
-const ECO_FACTS = [
-  "Indonesia adalah penyumbang sampah plastik ke laut terbesar kedua di dunia. Ayo kurangi plastik! 🌊",
-  "Satu pohon dewasa dapat menyerap sekitar 22kg karbon dioksida per tahun. Tanam pohon yuk! 🌳",
-  "Pemanasan global dapat menyebabkan kenaikan permukaan air laut yang mengancam pulau-pulau kecil di Indonesia. 🏝️",
-  "Mematikan lampu selama satu jam dapat menghemat energi yang cukup untuk menyalakan TV selama 3 jam. 📺",
-  "Sampah makanan di Indonesia mencapai 23-48 juta ton per tahun, cukup untuk memberi makan 61-125 juta orang. 🍱",
-  "Penggunaan tumbler dapat mengurangi hingga 150 botol plastik per orang setiap tahunnya. 🥤",
-  "Suhu rata-rata bumi telah meningkat sekitar 1.1°C sejak akhir abad ke-19. Kita harus bertindak! 🌡️",
-  "Ketahanan pangan Indonesia terancam oleh perubahan iklim yang mengganggu pola tanam petani. 🌾"
-];
 
 const SUBBAB_COLORS: Record<Subbab, string> = {
   'Kesehatan Lingkungan': 'bg-teal-100 text-teal-800 border-teal-200',
@@ -187,49 +178,6 @@ const DailyQuestBanner = () => {
 };
 
 // --- Bang Eko Component ---
-const BangEko = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [currentFact, setCurrentFact] = useState('');
-
-  const showFact = () => {
-    const randomFact = ECO_FACTS[Math.floor(Math.random() * ECO_FACTS.length)];
-    setCurrentFact(randomFact);
-    setIsOpen(true);
-  };
-
-  return (
-    <div className="fixed bottom-6 right-6 z-[100]">
-      {isOpen && (
-        <div className="absolute bottom-16 right-0 w-72 bg-white rounded-2xl shadow-2xl border border-[#E5E0D8] p-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 bg-[#8A9A5B] rounded-lg flex items-center justify-center">
-                <Leaf className="w-5 h-5 text-white" />
-              </div>
-              <span className="font-bold text-sm">Bang Eko</span>
-            </div>
-            <button onClick={() => setIsOpen(false)} className="p-1 hover:bg-[#F4F1EA] rounded-full transition-colors">
-              <X className="w-4 h-4 text-[#A8A096]" />
-            </button>
-          </div>
-          <div className="bg-[#F4F1EA] p-3 rounded-xl text-sm leading-relaxed text-[#4A4036] border border-[#E5E0D8]">
-            {currentFact}
-          </div>
-          <div className="mt-3 text-[10px] text-[#A8A096] font-medium text-center italic">
-            "Semangat terus ya, Eco-Influencer! 🌱"
-          </div>
-        </div>
-      )}
-      <button
-        onClick={showFact}
-        className="w-14 h-14 bg-[#8A9A5B] hover:bg-[#7A8A4B] text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center group relative"
-      >
-        <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white animate-pulse"></div>
-        <MessageSquare className="w-7 h-7 group-hover:scale-110 transition-transform" />
-      </button>
-    </div>
-  );
-};
 const ChangeView = ({ center }: { center: [number, number] }) => {
   const map = useMap();
   useEffect(() => {
