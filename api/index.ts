@@ -78,7 +78,8 @@ async function getUserStreakInfo(userId: string, supabase: SupabaseClient) {
 }
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // --- API Routes ---
 
@@ -191,6 +192,12 @@ CREATE POLICY "Allow all for reports" ON reports FOR ALL USING (true) WITH CHECK
 
 ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for assignments" ON assignments FOR ALL USING (true) WITH CHECK (true);
+-- --- INDEXES ---
+CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
+CREATE INDEX IF NOT EXISTS idx_comments_author_id ON comments(author_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_post_id ON interactions(post_id);
+CREATE INDEX IF NOT EXISTS idx_interactions_user_id ON interactions(user_id);
   `;
   res.send(`<pre>${sql}</pre>`);
 });
@@ -995,7 +1002,8 @@ app.get("/api/posts", async (req, res) => {
           username
         )
       `)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(50);
 
     if (authorId) {
       query = query.eq('author_id', authorId);
@@ -1293,7 +1301,28 @@ app.post("/api/posts", async (req, res) => {
       };
     }
 
-    res.json({ success: true, id: (data && data[0]?.id) || insertData.id || Date.now().toString(), user: updatedUser });
+    // Format the new post for frontend
+    const newPost = data && data[0] ? {
+      id: data[0].id,
+      authorId: data[0].author_id || data[0].user_id,
+      authorName: updatedUser?.fullName || updatedUser?.username || "Anonim",
+      authorClass: updatedUser?.className || "Umum",
+      authorUsername: updatedUser?.username,
+      subbab: data[0].subbab,
+      caption: data[0].caption || data[0].content || data[0].text,
+      imageUrl: data[0].image_url || data[0].imageurl,
+      insightful: 0,
+      ask: 0,
+      support: 0,
+      timestamp: data[0].created_at,
+      isScientific: Boolean(data[0].is_scientific),
+      locationLat: data[0].location_lat,
+      locationLng: data[0].location_lng,
+      commentCount: 0,
+      userInteractions: []
+    } : null;
+
+    res.json({ success: true, user: updatedUser, post: newPost });
   } catch (error: any) {
     console.error("[Create Post Catch Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });

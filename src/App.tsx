@@ -1395,8 +1395,10 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetching, setIsFetching] = useState(false);
 
   const fetchComments = async () => {
+    setIsFetching(true);
     try {
       const res = await fetch(`/api/posts/${postId}/comments`);
       if (res.ok) {
@@ -1408,6 +1410,8 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
       }
     } catch (err) {
       console.error("Failed to fetch comments", err);
+    } finally {
+      setIsFetching(false);
     }
   };
 
@@ -1446,22 +1450,30 @@ const CommentSection = ({ postId, currentUser, onCommentAdded }: { postId: strin
   return (
     <div className="mt-4 pt-4 border-t border-[#E5E0D8] space-y-4">
       <div className="space-y-3">
-        {comments.map(comment => (
-          <div key={comment.id} className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-xs font-bold shrink-0">
-              {(comment.authorName || 'U').charAt(0)?.toUpperCase()}
-            </div>
-            <div className="flex-1 bg-[#F4F1EA] rounded-2xl px-4 py-2">
-              <div className="flex items-center gap-2 mb-0.5">
-                <span className="text-sm font-bold">{comment.authorName || 'User'}</span>
-                <span className="text-[10px] font-bold text-[#A8A096] uppercase tracking-wider">
-                  {comment.authorClass || 'Siswa'}
-                </span>
-              </div>
-              <p className="text-sm text-[#4A4036]">{comment.content}</p>
-            </div>
+        {isFetching && comments.length === 0 ? (
+          <div className="flex justify-center py-4">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-[#8A9A5B]"></div>
           </div>
-        ))}
+        ) : comments.length === 0 ? (
+          <p className="text-center text-sm text-[#A8A096] py-2">Belum ada komentar</p>
+        ) : (
+          comments.map(comment => (
+            <div key={comment.id} className="flex gap-3">
+              <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white text-xs font-bold shrink-0">
+                {(comment.authorName || 'U').charAt(0)?.toUpperCase()}
+              </div>
+              <div className="flex-1 bg-[#F4F1EA] rounded-2xl px-4 py-2">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-sm font-bold">{comment.authorName || 'User'}</span>
+                  <span className="text-[10px] font-bold text-[#A8A096] uppercase tracking-wider">
+                    {comment.authorClass || 'Siswa'}
+                  </span>
+                </div>
+                <p className="text-sm text-[#4A4036]">{comment.content}</p>
+              </div>
+            </div>
+          ))
+        )}
       </div>
 
       <form onSubmit={handleSubmit} className="flex gap-3 items-center">
@@ -2779,6 +2791,10 @@ export default function App() {
           setCurrentUser(data.user);
           localStorage.setItem('edugram_user_profile', JSON.stringify(data.user));
         }
+
+        if (data.post) {
+          setPosts(prevPosts => [data.post, ...prevPosts]);
+        }
         
         // Show Carbon Receipt
         setReceiptData({ isOpen: true, xp: xpGained, title: subbab });
@@ -2793,7 +2809,7 @@ export default function App() {
         setUserCoords(null);
         setIsMission(false);
         setGameLevel(1);
-        fetchData(); // Refresh feed
+        // fetchData(); // No longer need full fetch
       } else {
         const data = await res.json();
         let errorMessage = data.error || 'Gagal mengirim postingan';
@@ -3343,7 +3359,12 @@ export default function App() {
                         <CommentSection 
                           postId={post.id} 
                           currentUser={currentUser} 
-                          onCommentAdded={() => fetchData()} 
+                          onCommentAdded={() => {
+                            // Optimistically update comment count locally
+                            setPosts(prevPosts => prevPosts.map(p => 
+                              p.id === post.id ? { ...p, commentCount: (p.commentCount || 0) + 1 } : p
+                            ));
+                          }} 
                         />
                       )}
                     </div>
