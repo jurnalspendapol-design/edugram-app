@@ -2641,6 +2641,9 @@ export default function App() {
           updateEcoHealth(currentUser.id, 20);
         }
         fetchData();
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal menyelesaikan misi');
       }
     } catch (err) {
       console.error("Failed to complete mission", err);
@@ -2858,7 +2861,7 @@ export default function App() {
       
       if (!res.ok) {
         const errorData = await res.json().catch(() => ({}));
-        console.error('Interaction error:', errorData.error);
+        throw new Error(errorData.error || 'Gagal melakukan interaksi');
       }
       
       // Refresh leaderboard in background
@@ -3071,12 +3074,16 @@ export default function App() {
                         onClick={async () => {
                           if (confirm('Are you sure you want to delete all users?')) {
                             try {
-                              await fetch('/api/delete-all-users');
+                              const res = await fetch('/api/delete-all-users');
+                              if (!res.ok) {
+                                const errorData = await res.json().catch(() => ({}));
+                                throw new Error(errorData.error || 'Gagal menghapus semua pengguna');
+                              }
                               alert('All users deleted');
                               window.location.reload();
-                            } catch (err) {
+                            } catch (err: any) {
                               console.error("Failed to delete users", err);
-                              alert('Gagal menghapus pengguna');
+                              alert(err.message || 'Gagal menghapus pengguna');
                             }
                           }
                         }}
