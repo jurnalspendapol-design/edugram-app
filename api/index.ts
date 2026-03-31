@@ -649,7 +649,11 @@ app.get("/api/users/:id", async (req, res) => {
 
     // Sync XP to database if it's higher
     if (finalXp > ((user as any).xp || 0)) {
-      Promise.resolve(supabase.from('users').update({ xp: finalXp }).eq('id', user.id)).catch(err => console.error('Failed to update XP:', err));
+      try {
+        await supabase.from('users').update({ xp: finalXp }).eq('id', user.id);
+      } catch (err) {
+        console.error('Failed to update XP:', err);
+      }
     }
 
     const { streak, lastPostDate } = await getUserStreakInfo(user.id, supabase);
@@ -1550,6 +1554,7 @@ app.get("/api/leaderboard", async (req, res) => {
       return res.status(500).json({ error: "Gagal mengambil leaderboard" });
     }
 
+    const updatePromises: any[] = [];
     const userStats = users.map(u => {
       const userPosts = posts.filter(p => p.author_id === u.id);
       const userComments = comments.filter(c => c.author_id === u.id);
@@ -1568,7 +1573,7 @@ app.get("/api/leaderboard", async (req, res) => {
 
       // Sync XP to database if it's higher
       if (finalXp > ((u as any).xp || 0)) {
-        Promise.resolve(supabase.from('users').update({ xp: finalXp }).eq('id', u.id)).catch(err => console.error('Failed to update XP:', err));
+        updatePromises.push(supabase.from('users').update({ xp: finalXp }).eq('id', u.id));
       }
 
       return {
@@ -1581,6 +1586,10 @@ app.get("/api/leaderboard", async (req, res) => {
         interactions: interactionsReceived
       };
     });
+
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises).catch(err => console.error('Failed to update some XPs:', err));
+    }
 
     const leaderboard = userStats
       .sort((a, b) => b.xp - a.xp || b.interactions - a.interactions)
@@ -1655,7 +1664,7 @@ app.delete("/api/users/:id", async (req, res) => {
 
 app.get("/api/search", async (req, res) => {
   try {
-    const q = req.query.q as string;
+    const q = (req.query.q as string || "").trim();
     if (!q) return res.json({ users: [], posts: [], groups: [] });
 
     const supabase = getSupabase();
@@ -1668,15 +1677,17 @@ app.get("/api/search", async (req, res) => {
     
     const selectUserCols = ['id', 'username', 'profile_picture_url', 'role'];
     if (userCols.includes('full_name')) selectUserCols.push('full_name');
-    else if (userCols.includes('fullname')) selectUserCols.push('fullname');
-    else if (userCols.includes('name')) selectUserCols.push('name');
-    else if (userCols.includes('nama')) selectUserCols.push('nama');
+    if (userCols.includes('fullname')) selectUserCols.push('fullname');
+    if (userCols.includes('name')) selectUserCols.push('name');
+    if (userCols.includes('nama')) selectUserCols.push('nama');
 
     let userQuery = supabase.from('users').select(selectUserCols.join(','));
     
     const escapedQ = q.replace(/,/g, '\\,');
     const nameCols = ['full_name', 'fullname', 'name', 'nama', 'username'].filter(c => userCols.includes(c));
-    const orConditions = nameCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
+    
+    // If multiple words, we try to match the whole string first
+    let orConditions = nameCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
     
     const { data: users } = await userQuery.or(orConditions).limit(10);
 
@@ -1686,8 +1697,8 @@ app.get("/api/search", async (req, res) => {
     
     const selectPostCols = ['id', 'author_id'];
     if (postCols.includes('caption')) selectPostCols.push('caption');
-    else if (postCols.includes('content')) selectPostCols.push('content');
-    else if (postCols.includes('text')) selectPostCols.push('text');
+    if (postCols.includes('content')) selectPostCols.push('content');
+    if (postCols.includes('text')) selectPostCols.push('text');
     
     let postQuery = supabase
       .from('posts')
