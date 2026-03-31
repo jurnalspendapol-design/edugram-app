@@ -82,6 +82,119 @@ app.use(express.json());
 
 // --- API Routes ---
 
+// Setup DB SQL Helper
+app.get("/api/setup-db", (req, res) => {
+  const sql = `
+-- 1. Tabel Users
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  password TEXT NOT NULL,
+  full_name TEXT,
+  class_name TEXT,
+  student_number TEXT DEFAULT '0',
+  school_name TEXT DEFAULT 'Sekolah EduGram',
+  profile_picture_url TEXT,
+  bio TEXT,
+  role TEXT DEFAULT 'student',
+  xp INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 2. Tabel Posts
+CREATE TABLE IF NOT EXISTS posts (
+  id TEXT PRIMARY KEY,
+  author_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  subbab TEXT,
+  caption TEXT NOT NULL,
+  image_url TEXT,
+  is_scientific BOOLEAN DEFAULT FALSE,
+  is_mission BOOLEAN DEFAULT FALSE,
+  game_level INTEGER DEFAULT 1,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  insightful INTEGER DEFAULT 0,
+  ask INTEGER DEFAULT 0,
+  support INTEGER DEFAULT 0,
+  location_lat DOUBLE PRECISION,
+  location_lng DOUBLE PRECISION
+);
+
+-- 3. Tabel Comments
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+  author_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 4. Tabel Interactions
+CREATE TABLE IF NOT EXISTS interactions (
+  id TEXT PRIMARY KEY,
+  post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT NOT NULL, -- 'insightful', 'ask', 'support'
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(post_id, user_id, type)
+);
+
+-- 5. Tabel Follows
+CREATE TABLE IF NOT EXISTS follows (
+  id TEXT PRIMARY KEY,
+  follower_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  following_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(follower_id, following_id)
+);
+
+-- 6. Tabel Reports
+CREATE TABLE IF NOT EXISTS reports (
+  id TEXT PRIMARY KEY,
+  post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+  reporter_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  reason TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 7. Tabel Assignments
+CREATE TABLE IF NOT EXISTS assignments (
+  id TEXT PRIMARY KEY,
+  post_id TEXT REFERENCES posts(id) ON DELETE CASCADE,
+  teacher_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  type TEXT,
+  question TEXT,
+  options JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- --- KEBIJAKAN RLS (Row Level Security) ---
+-- Matikan RLS untuk kemudahan (TIDAK DISARANKAN UNTUK PRODUKSI)
+-- Atau tambahkan policy:
+ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for users" ON users FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for posts" ON posts FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for comments" ON comments FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE interactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for interactions" ON interactions FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE follows ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for follows" ON follows FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE reports ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for reports" ON reports FOR ALL USING (true) WITH CHECK (true);
+
+ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Allow all for assignments" ON assignments FOR ALL USING (true) WITH CHECK (true);
+  `;
+  res.send(`<pre>${sql}</pre>`);
+});
+
 // Health check / DB status
 app.get("/api/health", async (req, res) => {
   try {
@@ -587,17 +700,17 @@ app.get("/api/users/:id", async (req, res) => {
 
     res.json({ 
       ...user, 
-      fullName: user.full_name,
-      className: user.class_name,
-      studentNumber: user.student_number,
-      schoolName: (user as any).school_name || "",
-      profilePictureUrl: (user as any).profile_picture_url || "",
-      bio: (user as any).bio || "",
+      fullName: user.full_name || user.fullname || user.name || user.nama || user.username,
+      className: user.class_name || user.classname || user.kelas,
+      studentNumber: user.student_number || "0",
+      schoolName: user.school_name || user.schoolname || user.sekolah || "",
+      profilePictureUrl: user.profile_picture_url || user.profilepictureurl || "",
+      bio: user.bio || "",
       interactions: totalInteractions,
       streak,
       lastPostDate,
       xp: finalXp,
-      role: normalizeRole((user as any).role, user.class_name, user.id),
+      role: normalizeRole(user.role || user.peran, user.class_name || user.kelas, user.id),
       followersCount,
       followingCount,
       isFollowing
@@ -912,22 +1025,23 @@ app.get("/api/posts", async (req, res) => {
         .filter(i => i.post_id === p.id)
         .map(i => i.type);
 
+      const user = p.users || {};
       return {
         id: p.id,
-        authorId: p.author_id,
-        authorName: p.users?.full_name,
-        authorClass: p.users?.class_name,
-        authorUsername: p.users?.username,
+        authorId: p.author_id || p.user_id,
+        authorName: user.full_name || user.fullname || user.name || user.nama || user.username || "Anonim",
+        authorClass: user.class_name || user.classname || user.kelas || "Umum",
+        authorUsername: user.username,
         subbab: p.subbab,
-        caption: p.caption,
-        imageUrl: p.image_url,
-        insightful: p.insightful,
-        ask: p.ask,
-        support: p.support,
+        caption: p.caption || p.content || p.text,
+        imageUrl: p.image_url || p.imageurl,
+        insightful: p.insightful || 0,
+        ask: p.ask || 0,
+        support: p.support || 0,
         timestamp: p.created_at,
         isScientific: Boolean(p.is_scientific),
-        locationLat: (p as any).location_lat,
-        locationLng: (p as any).location_lng,
+        locationLat: p.location_lat,
+        locationLng: p.location_lng,
         commentCount: count,
         userInteractions: interactions
       };
@@ -1060,62 +1174,99 @@ app.post("/api/posts", async (req, res) => {
       return res.status(400).json({ error: "Data tidak lengkap" });
     }
 
-    const id = Date.now().toString();
-    const createdAt = new Date().toISOString();
-
-    const insertData: any = {
-      id,
-      author_id: authorId,
-      subbab,
-      caption,
-      image_url: imageUrl || "",
-      is_scientific: isScientific,
-      is_mission: isMission,
-      game_level: gameLevel,
-      created_at: createdAt,
-      insightful: 0,
-      ask: 0,
-      support: 0
-    };
-
-    if (locationLat !== null && locationLat !== undefined) {
-      insertData.location_lat = locationLat;
-      insertData.location_lng = locationLng;
+    // 1. Detect available columns in 'posts' table
+    console.log(`[Create Post] Detecting schema for 'posts' table...`);
+    const { data: sampleData, error: schemaError } = await supabase.from('posts').select('*').limit(1);
+    
+    if (schemaError) {
+      console.warn("[Create Post] Schema detection warning:", schemaError.message);
     }
 
-    let { error } = await supabase
-      .from('posts')
-      .insert([insertData]);
+    const availableColumns = sampleData && sampleData.length > 0 ? Object.keys(sampleData[0]) : [];
+    console.log(`[Create Post] Available columns:`, availableColumns);
 
-    // Fallback if location columns are missing in DB
-    if (error && (error.message.includes('location_lat') || error.code === '42703')) {
-      console.warn("Location columns missing, retrying without location data...");
-      delete insertData.location_lat;
-      delete insertData.location_lng;
+    const createdAt = new Date().toISOString();
+    const insertData: any = {};
+
+    // Map fields based on available columns
+    if (availableColumns.length > 0) {
+      // Author ID mapping
+      if (availableColumns.includes('author_id')) insertData.author_id = authorId;
+      else if (availableColumns.includes('user_id')) insertData.user_id = authorId;
+      else if (availableColumns.includes('authorid')) insertData.authorid = authorId;
+
+      // Caption mapping
+      if (availableColumns.includes('caption')) insertData.caption = caption;
+      else if (availableColumns.includes('content')) insertData.content = caption;
+      else if (availableColumns.includes('text')) insertData.text = caption;
+
+      // Other fields
+      if (availableColumns.includes('subbab')) insertData.subbab = subbab;
+      if (availableColumns.includes('image_url')) insertData.image_url = imageUrl || "";
+      else if (availableColumns.includes('imageurl')) insertData.imageurl = imageUrl || "";
+
+      if (availableColumns.includes('is_scientific')) insertData.is_scientific = isScientific;
+      if (availableColumns.includes('is_mission')) insertData.is_mission = isMission;
+      if (availableColumns.includes('game_level')) insertData.game_level = gameLevel;
+      if (availableColumns.includes('created_at')) insertData.created_at = createdAt;
+
+      if (availableColumns.includes('location_lat')) insertData.location_lat = locationLat;
+      if (availableColumns.includes('location_lng')) insertData.location_lng = locationLng;
+
+      // Default values for interactions
+      if (availableColumns.includes('insightful')) insertData.insightful = 0;
+      if (availableColumns.includes('ask')) insertData.ask = 0;
+      if (availableColumns.includes('support')) insertData.support = 0;
+    } else {
+      // Fallback if table empty/no columns detected
+      insertData.author_id = authorId;
+      insertData.caption = caption;
+      insertData.subbab = subbab;
+      insertData.image_url = imageUrl || "";
+      insertData.is_scientific = isScientific;
+      insertData.created_at = createdAt;
+      insertData.insightful = 0;
+      insertData.ask = 0;
+      insertData.support = 0;
+    }
+
+    console.log(`[Create Post] Attempting insert with columns:`, Object.keys(insertData));
+    
+    // Try inserting WITHOUT manual ID first (let DB handle UUID/Serial)
+    let { error, data } = await supabase.from('posts').insert([insertData]).select();
+
+    if (error) {
+      console.warn("[Create Post] Primary insert failed:", error.message);
       
-      const retry = await supabase.from('posts').insert([insertData]);
-      error = retry.error;
+      // If ID is required but not auto-generated
+      if (error.code === '23502' && error.message.includes('"id"')) {
+        console.log("[Create Post] ID required error. Trying with manual ID...");
+        const manualId = Date.now().toString();
+        const { error: errorId, data: dataId } = await supabase.from('posts').insert([{ ...insertData, id: manualId }]).select();
+        if (!errorId) {
+          data = dataId;
+          error = null;
+        } else {
+          error = errorId;
+        }
+      }
+      
+      // If RLS error
+      if (error && (error.code === '42501' || error.message.toLowerCase().includes('row-level security'))) {
+        return res.status(403).json({
+          error: "Akses Ditolak (RLS)",
+          message: error.message,
+          hint: "Row-Level Security (RLS) aktif di tabel 'posts'. Pastikan ada policy yang mengizinkan INSERT untuk pengguna terautentikasi."
+        });
+      }
     }
 
     if (error) {
-      console.error("[Create Post Error]:", error);
-      
-      // Fallback for mission columns
-      if (error.message.includes('is_mission') || error.code === '42703') {
-        console.warn("Mission columns missing, retrying without mission data...");
-        delete insertData.is_mission;
-        delete insertData.game_level;
-        const retry = await supabase.from('posts').insert([insertData]);
-        if (!retry.error) {
-          return res.json({ success: true, id, user: null });
-        }
-      }
-
       console.error("[Create Post Error Final]:", error);
       return res.status(500).json({ 
         error: "Gagal membuat postingan: " + error.message,
-        details: error.details,
-        hint: "Jika error terkait 'is_mission', jalankan SQL ini di Supabase: ALTER TABLE posts ADD COLUMN is_mission BOOLEAN DEFAULT FALSE; ALTER TABLE posts ADD COLUMN game_level INTEGER DEFAULT 1;"
+        details: error,
+        hint: "Pastikan tabel 'posts' sudah dibuat di Supabase dengan kolom yang sesuai."
       });
     }
 
@@ -1123,35 +1274,26 @@ app.post("/api/posts", async (req, res) => {
     let xpGained = 10;
     if (isScientific) xpGained += 5;
     
-    const { data: user } = await supabase.from('users').select('id, username, full_name, class_name, student_number, xp').eq('id', authorId).single();
+    const { data: user } = await supabase.from('users').select('*').eq('id', authorId).maybeSingle();
     
     let updatedUser = null;
     if (user) {
-      // Try to update XP, but don't fail if column missing
       try {
         const currentXp = (user as any).xp || 0;
-        await supabase.from('users').update({ 
-          xp: currentXp + xpGained
-        }).eq('id', authorId);
-      } catch (e) {
-        console.log("XP update failed, likely column missing");
-      }
+        await supabase.from('users').update({ xp: currentXp + xpGained }).eq('id', authorId);
+      } catch (e) {}
       
       const { streak, lastPostDate } = await getUserStreakInfo(authorId, supabase);
       updatedUser = {
-        id: user.id,
-        username: user.username,
-        fullName: user.full_name,
-        className: user.class_name,
-        studentNumber: user.student_number,
-        role: (user as any).role || (user.id.includes('TEACHER') ? 'teacher' : 'student'),
-        xp: (user as any).xp || 0,
+        ...user,
+        fullName: user.full_name || user.fullname || user.name || user.nama,
+        className: user.class_name || user.classname || user.kelas,
         streak,
         lastPostDate
       };
     }
 
-    res.json({ success: true, id, user: updatedUser });
+    res.json({ success: true, id: (data && data[0]?.id) || insertData.id || Date.now().toString(), user: updatedUser });
   } catch (error: any) {
     console.error("[Create Post Catch Error]:", error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
@@ -1500,8 +1642,8 @@ app.get("/api/search", async (req, res) => {
     // Search posts
     const { data: posts } = await supabase
       .from('posts')
-      .select('id, content, user_id, user:users(id, full_name, username, profile_picture_url)')
-      .ilike('content', `%${query}%`)
+      .select('id, caption, author_id, user:users(id, full_name, username, profile_picture_url)')
+      .ilike('caption', `%${query}%`)
       .limit(10);
 
     // Search groups (in-memory)
