@@ -1662,18 +1662,41 @@ app.get("/api/search", async (req, res) => {
     const query = q.toLowerCase();
 
     // Search users
-    const { data: users } = await supabase
-      .from('users')
-      .select('id, username, full_name, profile_picture_url, role')
-      .or(`full_name.ilike.%${q}%,username.ilike.%${q}%`)
-      .limit(10);
+    // We search across multiple possible name columns and username
+    const { data: sampleUser } = await supabase.from('users').select('*').limit(1);
+    const userCols = sampleUser && sampleUser.length > 0 ? Object.keys(sampleUser[0]) : ['full_name', 'username'];
+    
+    const selectUserCols = ['id', 'username', 'profile_picture_url', 'role'];
+    if (userCols.includes('full_name')) selectUserCols.push('full_name');
+    else if (userCols.includes('fullname')) selectUserCols.push('fullname');
+    else if (userCols.includes('name')) selectUserCols.push('name');
+    else if (userCols.includes('nama')) selectUserCols.push('nama');
+
+    let userQuery = supabase.from('users').select(selectUserCols.join(','));
+    
+    const escapedQ = q.replace(/,/g, '\\,');
+    const nameCols = ['full_name', 'fullname', 'name', 'nama', 'username'].filter(c => userCols.includes(c));
+    const orConditions = nameCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
+    
+    const { data: users } = await userQuery.or(orConditions).limit(10);
 
     // Search posts
-    const { data: posts } = await supabase
+    const { data: samplePost } = await supabase.from('posts').select('*').limit(1);
+    const postCols = samplePost && samplePost.length > 0 ? Object.keys(samplePost[0]) : ['caption'];
+    
+    const selectPostCols = ['id', 'author_id'];
+    if (postCols.includes('caption')) selectPostCols.push('caption');
+    else if (postCols.includes('content')) selectPostCols.push('content');
+    else if (postCols.includes('text')) selectPostCols.push('text');
+    
+    let postQuery = supabase
       .from('posts')
-      .select('id, caption, author_id, user:users(id, full_name, username, profile_picture_url)')
-      .ilike('caption', `%${query}%`)
-      .limit(10);
+      .select(`${selectPostCols.join(',')}, user:users(*)`);
+    
+    const captionCols = ['caption', 'content', 'text'].filter(c => postCols.includes(c));
+    const postOrConditions = captionCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
+    
+    const { data: posts } = await postQuery.or(postOrConditions).limit(10);
 
     // Search groups (in-memory)
     const groups = Object.values(fallbackGroups).filter(g => 
@@ -1682,8 +1705,21 @@ app.get("/api/search", async (req, res) => {
     ).slice(0, 10);
 
     res.json({
-      users: users || [],
-      posts: posts || [],
+      users: ((users as any) || []).map((u: any) => ({
+        ...u,
+        full_name: u.full_name || u.fullname || u.name || u.nama || u.username
+      })),
+      posts: ((posts as any) || []).map((p: any) => {
+        const u = Array.isArray(p.user) ? p.user[0] : p.user;
+        return {
+          ...p,
+          content: p.caption || p.content || p.text,
+          user: u ? {
+            ...u,
+            full_name: u.full_name || u.fullname || u.name || u.nama || u.username
+          } : null
+        };
+      }),
       groups: groups || []
     });
   } catch (error: any) {
