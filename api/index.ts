@@ -101,6 +101,16 @@ const app = express();
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Request logger
+app.use((req, res, next) => {
+  const start = Date.now();
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`${req.method} ${req.originalUrl} - ${duration}ms`);
+  });
+  next();
+});
+
 // --- API Routes ---
 
 // Setup DB SQL Helper
@@ -1029,7 +1039,7 @@ app.get("/api/posts", async (req, res) => {
     const { data: posts, error } = await query;
       
     if (error) {
-      console.error("[Get Posts Error]:", error);
+      console.error("[Get Posts Error]:", error.message || error);
       return res.status(500).json({ error: "Gagal mengambil postingan" });
     }
 
@@ -1041,8 +1051,8 @@ app.get("/api/posts", async (req, res) => {
     
     // Fetch comment counts and user interactions for these posts in parallel
     const [commentResult, interactionResult] = await Promise.all([
-      supabase.from('comments').select('post_id').in('post_id', postIds),
-      userId ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds) : { data: [] }
+      postIds.length > 0 ? supabase.from('comments').select('post_id').in('post_id', postIds) : { data: [] },
+      userId && postIds.length > 0 ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds) : { data: [] }
     ]);
 
     const commentCounts = commentResult.data || [];
@@ -1078,7 +1088,7 @@ app.get("/api/posts", async (req, res) => {
 
     res.json(formattedPosts);
   } catch (error: any) {
-    console.error("[Get Posts Catch Error]:", error);
+    console.error("[Get Posts Catch Error]:", error.message || error);
     res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
   }
 });
