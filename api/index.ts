@@ -1213,58 +1213,28 @@ app.post("/api/posts", async (req, res) => {
       return res.status(400).json({ error: "Data tidak lengkap" });
     }
 
-    // 1. Detect available columns in 'posts' table
-    const availableColumns = await getTableColumns(supabase, 'posts');
-    console.log(`[Create Post] Available columns:`, availableColumns);
-
     const createdAt = new Date().toISOString();
-    const insertData: any = {};
+    const postId = Date.now().toString() + Math.floor(Math.random() * 1000);
 
-    // Map fields based on available columns
-    if (availableColumns.length > 0) {
-      // Author ID mapping
-      if (availableColumns.includes('author_id')) insertData.author_id = authorId;
-      else if (availableColumns.includes('user_id')) insertData.user_id = authorId;
-      else if (availableColumns.includes('authorid')) insertData.authorid = authorId;
+    const insertData = {
+      id: postId,
+      author_id: authorId,
+      subbab: subbab || "",
+      caption: caption,
+      image_url: imageUrl || "",
+      is_scientific: !!isScientific,
+      is_mission: !!isMission,
+      game_level: gameLevel || 1,
+      created_at: createdAt,
+      location_lat: locationLat || null,
+      location_lng: locationLng || null,
+      insightful: 0,
+      ask: 0,
+      support: 0
+    };
 
-      // Caption mapping
-      if (availableColumns.includes('caption')) insertData.caption = caption;
-      else if (availableColumns.includes('content')) insertData.content = caption;
-      else if (availableColumns.includes('text')) insertData.text = caption;
-
-      // Other fields
-      if (availableColumns.includes('subbab')) insertData.subbab = subbab;
-      if (availableColumns.includes('image_url')) insertData.image_url = imageUrl || "";
-      else if (availableColumns.includes('imageurl')) insertData.imageurl = imageUrl || "";
-
-      if (availableColumns.includes('is_scientific')) insertData.is_scientific = isScientific;
-      if (availableColumns.includes('is_mission')) insertData.is_mission = isMission;
-      if (availableColumns.includes('game_level')) insertData.game_level = gameLevel;
-      if (availableColumns.includes('created_at')) insertData.created_at = createdAt;
-
-      if (availableColumns.includes('location_lat')) insertData.location_lat = locationLat;
-      if (availableColumns.includes('location_lng')) insertData.location_lng = locationLng;
-
-      // Default values for interactions
-      if (availableColumns.includes('insightful')) insertData.insightful = 0;
-      if (availableColumns.includes('ask')) insertData.ask = 0;
-      if (availableColumns.includes('support')) insertData.support = 0;
-    } else {
-      // Fallback if table empty/no columns detected
-      insertData.author_id = authorId;
-      insertData.caption = caption;
-      insertData.subbab = subbab;
-      insertData.image_url = imageUrl || "";
-      insertData.is_scientific = isScientific;
-      insertData.created_at = createdAt;
-      insertData.insightful = 0;
-      insertData.ask = 0;
-      insertData.support = 0;
-    }
-
-    console.log(`[Create Post] Attempting insert with columns:`, Object.keys(insertData));
+    console.log(`[Create Post] Attempting insert...`);
     
-    // Try inserting WITHOUT manual ID first (let DB handle UUID/Serial)
     let { error, data } = await supabase.from('posts').insert([insertData]).select();
 
     if (error) {

@@ -32,18 +32,33 @@ export interface Post {
   insightful: number;
   ask: number;
   support: number;
-  timestamp: string;
+  timestamp: number;
   isScientific: boolean;
-  locationLat?: number;
-  locationLng?: number;
   commentCount: number;
   userInteractions: string[];
+  locationLat?: number;
+  locationLng?: number;
+  assignments?: any[];
+  isMission?: boolean;
+  gameLevel?: number;
+}
+
+export interface Comment {
+  id: string;
+  postId: string;
+  authorId: string;
+  authorName: string;
+  authorClass: string;
+  content: string;
+  timestamp: number;
 }
 
 export interface UserStats {
   id: string;
-  username: string;
-  fullName: string;
+  name: string;
+  className: string;
+  schoolName: string;
   xp: number;
-  profilePictureUrl: string;
+  interactions: number;
+  role: 'student' | 'teacher';
 }

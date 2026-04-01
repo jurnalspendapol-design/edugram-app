@@ -4,6 +4,8 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
+import { UserProfile, Post, Comment, UserStats } from './types';
+import { ECO_FACTS, SCIENTIFIC_KEYWORDS, DAILY_QUESTS, SUBBAB_COLORS } from './constants';
 import BangEko from './components/BangEko';
 import ReactMarkdown from 'react-markdown';
 import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2, Info } from 'lucide-react';
@@ -68,159 +70,18 @@ const greenIcon = new L.Icon({
 
 type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
 
-interface UserProfile {
-  id: string;
-  username: string;
-  fullName: string;
-  className: string;
-  studentNumber: string;
-  schoolName: string;
-  profilePictureUrl: string;
-  bio: string;
-  role: 'student' | 'teacher';
-  xp: number;
-  interactions: number;
-  streak: number;
-  followersCount: number;
-  followingCount: number;
-  isFollowing?: boolean;
-  lastPostDate?: string; // ISO string YYYY-MM-DD
-}
-
-interface Post {
-  id: string;
-  authorId: string;
-  authorName: string;
-  authorClass: string;
-  authorUsername?: string;
-  authorIsFollowing?: boolean;
-  subbab: Subbab;
-  caption: string;
-  imageUrl: string;
-  insightful: number;
-  ask: number;
-  support: number;
-  timestamp: number;
-  isScientific: boolean;
-  commentCount: number;
-  userInteractions: string[];
-  locationLat?: number;
-  locationLng?: number;
-  assignments?: any[];
-  isMission?: boolean;
-  gameLevel?: number;
-}
-
-interface Comment {
-  id: string;
-  postId: string;
-  authorId: string;
-  authorName: string;
-  authorClass: string;
-  content: string;
-  timestamp: number;
-}
-
-interface UserStats {
-  id: string;
-  name: string;
-  className: string;
-  schoolName: string;
-  xp: number;
-  interactions: number;
-  role: 'student' | 'teacher';
-}
-
-const SCIENTIFIC_KEYWORDS = ['emisi', 'gas rumah kaca', 'limbah', 'biogas'];
-
-const DAILY_QUESTS = [
-  "Tunjukkan caramu menghemat air hari ini! 💧", // Minggu
-  "Posting foto botol minum tumblr kamu! (#SayNoToPlastic) 🥤", // Senin
-  "Cari 1 alat elektronik yang masih dicolok padahal nggak dipakai! 🔌", // Selasa
-  "Gunakan transportasi umum atau jalan kaki hari ini! 🚶‍♂️", // Rabu
-  "Kurangi penggunaan tisu, gunakan sapu tangan! 🧣", // Kamis
-  "Matikan lampu saat tidak digunakan! 💡", // Jumat
-  "Pilah sampah organik dan anorganik di rumah! ♻️" // Sabtu
-];
 
 
-const SUBBAB_COLORS: Record<Subbab, string> = {
-  'Kesehatan Lingkungan': 'bg-teal-100 text-teal-800 border-teal-200',
-  'Pemanasan Global': 'bg-red-100 text-red-800 border-red-200',
-  'Krisis Energi': 'bg-amber-100 text-amber-800 border-amber-200',
-  'Ketahanan Pangan': 'bg-green-100 text-green-800 border-green-200',
-};
 
-// --- Daily Quest Banner Component ---
-const DailyQuestBanner = () => {
-  const today = new Date().getDay();
-  const quest = DAILY_QUESTS[today];
-
-  return (
-    <div className="bg-gradient-to-r from-[#8A9A5B] to-[#7A8A4B] rounded-2xl p-4 mb-6 shadow-md border border-[#8A9A5B]/20 relative overflow-hidden group">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16 blur-2xl group-hover:scale-110 transition-transform"></div>
-      <div className="relative z-10 flex items-center gap-4">
-        <div className="w-12 h-12 bg-white/20 rounded-xl backdrop-blur-sm flex items-center justify-center shadow-inner shrink-0">
-          <Trophy className="w-6 h-6 text-white" />
-        </div>
-        <div>
-          <h3 className="text-white/80 text-xs font-bold uppercase tracking-wider mb-0.5">Misi Hari Ini</h3>
-          <p className="text-white font-bold text-sm sm:text-base leading-tight">{quest}</p>
-        </div>
-        <div className="ml-auto hidden sm:block">
-          <div className="bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest border border-white/30">
-            +15 XP
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-};
+import DailyQuestBanner from './components/DailyQuestBanner';
 
 // --- Bang Eko Component ---
-const ChangeView = ({ center }: { center: [number, number] }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (center[0] !== -6.2 || center[1] !== 106.8) {
-      map.flyTo(center, 13, {
-        animate: true,
-        duration: 1.5
-      });
-    }
-  }, [center[0], center[1], map]);
-  return null;
-};
+import ChangeView from './components/ChangeView';
 
 const ISSUE_KEYWORDS = ['limbah', 'polusi', 'sampah', 'kotor', 'asap', 'emisi', 'rusak', 'cemar', 'banjir', 'kekeringan', 'penebangan', 'kebakaran', 'plastik', 'oli', 'racun'];
 const SOLUTION_KEYWORDS = ['solusi', 'tanam', 'pohon', 'daur ulang', 'hemat', 'bersih', 'hijau', 'surya', 'kompos', 'organik', 'sepeda', 'jalan', 'tumbler', 'bibit', 'pupuk', 'biogas', 'manggrove'];
 
-const HeatmapLayer = ({ points }: { points: [number, number, number][] }) => {
-  const map = useMap();
-
-  useEffect(() => {
-    if (!map) return;
-
-    // @ts-ignore - leaflet.heat adds heatLayer to L
-    const heatLayer = L.heatLayer(points, {
-      radius: 25,
-      blur: 15,
-      maxZoom: 17,
-      gradient: {
-        0.4: 'blue',
-        0.6: 'lime',
-        0.7: 'yellow',
-        0.8: 'orange',
-        1.0: 'red'
-      }
-    }).addTo(map);
-
-    return () => {
-      map.removeLayer(heatLayer);
-    };
-  }, [map, points]);
-
-  return null;
-};
+import HeatmapLayer from './components/HeatmapLayer';
 
 const EcoMap = ({ posts }: { posts: Post[] }) => {
   const mapPosts = posts.filter(p => p.locationLat != null && p.locationLng != null);
