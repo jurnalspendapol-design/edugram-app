@@ -26,6 +26,11 @@ if (typeof window !== 'undefined') {
   
   window.addEventListener('unhandledrejection', (event) => {
     console.error('Unhandled promise rejection:', event.reason);
+    if (event.reason instanceof Error) {
+        console.error('Stack trace:', event.reason.stack);
+    } else {
+        console.error('Reason is not an Error object:', JSON.stringify(event.reason));
+    }
   });
 }
 
@@ -535,6 +540,7 @@ const resizeImage = (file: File, maxWidth: number = 800): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
+    reader.onerror = (error) => reject(error);
     reader.onload = (event) => {
       const img = new Image();
       img.src = event.target?.result as string;
@@ -552,9 +558,8 @@ const resizeImage = (file: File, maxWidth: number = 800): Promise<string> => {
         ctx?.drawImage(img, 0, 0, width, height);
         resolve(canvas.toDataURL('image/jpeg', 0.7));
       };
-      img.onerror = reject;
+      img.onerror = (error) => reject(error);
     };
-    reader.onerror = reject;
   });
 };
 
