@@ -1157,10 +1157,14 @@ app.post("/api/posts/:postId/comments", async (req, res) => {
     }
 
     // Add XP to commenter
-    const { data: user } = await supabase.from('users').select('xp').eq('id', authorId).single();
-    if (user) {
-      const currentXp = (user as any).xp || 0;
-      await supabase.from('users').update({ xp: currentXp + 2 }).eq('id', authorId);
+    try {
+      const { data: user } = await supabase.from('users').select('xp').eq('id', authorId).single();
+      if (user) {
+        const currentXp = (user as any).xp || 0;
+        await supabase.from('users').update({ xp: currentXp + 2 }).eq('id', authorId);
+      }
+    } catch (e) {
+      console.error("Failed to update XP:", e);
     }
 
     res.json({ success: true, id });
