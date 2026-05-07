@@ -111,6 +111,24 @@ app.use((req, res, next) => {
   next();
 });
 
+function handleSupabaseError(error: any, res: express.Response, context: string) {
+  console.error(`[${context} Error]:`, error);
+  const message = error.message || String(error);
+  
+  if (message.includes('ENOTFOUND') || message.includes('fetch failed')) {
+    return res.status(500).json({ 
+      error: `Koneksi ke Supabase gagal (${context}).`,
+      details: message,
+      hint: "Pastikan SUPABASE_URL dan SUPABASE_ANON_KEY di Secrets sudah benar. Error ENOTFOUND biasanya berarti URL salah atau tidak dapat dijangkau."
+    });
+  }
+  
+  res.status(500).json({ 
+    error: `Gagal pada ${context}: ${message}`,
+    details: error
+  });
+}
+
 // --- API Routes ---
 
 // Setup DB SQL Helper
@@ -237,11 +255,10 @@ app.get("/api/health", async (req, res) => {
   try {
     const supabase = getSupabase();
     const { error } = await supabase.from('users').select('id', { count: 'exact', head: true }).limit(1);
-    if (error) throw error;
+    if (error) return handleSupabaseError(error, res, "Health Check");
     res.json({ status: "ok" });
   } catch (error: any) {
-    console.error("[Health Check Error]:", error);
-    res.status(500).json({ error: error.message });
+    handleSupabaseError(error, res, "Health Check Catch");
   }
 });
 
@@ -273,11 +290,7 @@ app.post("/api/login", async (req, res) => {
         .maybeSingle();
       
       if (error2) {
-        console.error("[Login] All login attempts failed:", error2);
-        return res.status(500).json({ 
-          error: "Gagal login ke database: " + error2.message,
-          details: error2
-        });
+        return handleSupabaseError(error2, res, "Login");
       }
       user = user2;
     }
@@ -316,8 +329,7 @@ app.post("/api/login", async (req, res) => {
 
     res.json(formattedUser);
   } catch (error: any) {
-    console.error("[Login Error]:", error);
-    res.status(500).json({ error: error.message });
+    handleSupabaseError(error, res, "Login Catch");
   }
 });
 
@@ -501,13 +513,7 @@ app.post("/api/register", async (req, res) => {
                 const { error: errorNoSelect } = await supabase.from('users').insert([{ username, password }]);
                 
                 if (errorNoSelect) {
-                  console.error("[Register Error Final]:", errorNoSelect);
-                  return res.status(500).json({ 
-                    error: `Gagal mendaftar ke database.`,
-                    message: errorNoSelect.message,
-                    details: errorNoSelect,
-                    hint: "Pastikan tabel 'users' ada di Supabase. Jika RLS aktif, Anda harus menambahkan policy untuk INSERT."
-                  });
+                  return handleSupabaseError(errorNoSelect, res, "Register Final");
                 }
                 
                 // Jika tanpa select berhasil, kita buat data manual
@@ -1039,8 +1045,7 @@ app.get("/api/posts", async (req, res) => {
     const { data: posts, error } = await query;
       
     if (error) {
-      console.error("[Get Posts Error]:", error.message || error);
-      return res.status(500).json({ error: "Gagal mengambil postingan" });
+      return handleSupabaseError(error, res, "Get Posts");
     }
 
     if (!posts) {
@@ -1088,8 +1093,7 @@ app.get("/api/posts", async (req, res) => {
 
     res.json(formattedPosts);
   } catch (error: any) {
-    console.error("[Get Posts Catch Error]:", error.message || error);
-    res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+    handleSupabaseError(error, res, "Get Posts Catch");
   }
 });
 
@@ -1220,24 +1224,34 @@ app.post("/api/posts", async (req, res) => {
     const createdAt = new Date().toISOString();
     const postId = Date.now().toString() + Math.floor(Math.random() * 1000);
 
-    const insertData = {
+    // Dynamic column filtering for resilience
+    const availableColumns = await getTableColumns(supabase, 'posts');
+    const insertData: any = {
       id: postId,
       author_id: authorId,
       subbab: subbab || "",
       caption: caption,
       image_url: imageUrl || "",
       is_scientific: !!isScientific,
-      is_mission: !!isMission,
-      game_level: gameLevel || 1,
       created_at: createdAt,
-      location_lat: locationLat || null,
-      location_lng: locationLng || null,
       insightful: 0,
       ask: 0,
       support: 0
     };
 
-    console.log(`[Create Post] Attempting insert...`);
+    // Add optional columns only if they exist in the DB
+    if (availableColumns.length > 0) {
+      if (availableColumns.includes('is_mission')) insertData.is_mission = !!isMission;
+      if (availableColumns.includes('game_level')) insertData.game_level = gameLevel || 1;
+      if (availableColumns.includes('location_lat')) insertData.location_lat = locationLat || null;
+      if (availableColumns.includes('location_lng')) insertData.location_lng = locationLng || null;
+    } else {
+      // Fallback if schema detection fails (e.g. table is empty)
+      // Only include columns we are 99% sure exist in basic schemas
+      // We exclude game_level and is_mission as they are newer additions
+    }
+
+    console.log(`[Create Post] Attempting resilient insert...`);
     
     let { error, data } = await supabase.from('posts').insert([insertData]).select();
 
@@ -1540,20 +1554,27 @@ app.get("/api/leaderboard", async (req, res) => {
   try {
     const supabase = getSupabase();
     const { data: users, error: usersError } = await supabase.from('users').select('*') as { data: any[], error: any };
-    const { data: posts, error: postsError } = await supabase.from('posts').select('author_id, insightful, ask, support, is_scientific') as { data: any[], error: any };
-    const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id') as { data: any[], error: any };
+    if (usersError) return handleSupabaseError(usersError, res, "Leaderboard Users");
 
-    if (usersError || postsError || commentsError) {
-      console.error("[Leaderboard Fetch Error]:", { usersError, postsError, commentsError });
-      return res.status(500).json({ error: "Gagal mengambil leaderboard" });
-    }
+    const availableColumns = await getTableColumns(supabase, 'posts');
+    const postSelect = ['author_id'];
+    if (availableColumns.includes('insightful')) postSelect.push('insightful');
+    if (availableColumns.includes('ask')) postSelect.push('ask');
+    if (availableColumns.includes('support')) postSelect.push('support');
+    if (availableColumns.includes('is_scientific')) postSelect.push('is_scientific');
+
+    const { data: posts, error: postsError } = await supabase.from('posts').select(postSelect.join(',')) as { data: any[], error: any };
+    if (postsError) return handleSupabaseError(postsError, res, "Leaderboard Posts");
+
+    const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id') as { data: any[], error: any };
+    if (commentsError) return handleSupabaseError(commentsError, res, "Leaderboard Comments");
 
     const updatePromises: any[] = [];
     const userStats = users.map(u => {
       const userPosts = posts.filter(p => p.author_id === u.id);
       const userComments = comments.filter(c => c.author_id === u.id);
       
-      const interactionsReceived = userPosts.reduce((acc, p) => acc + p.insightful + p.ask + p.support, 0);
+      const interactionsReceived = userPosts.reduce((acc, p) => acc + (p.insightful || 0) + (p.ask || 0) + (p.support || 0), 0);
       
       // Calculate XP based on activity to ensure accuracy for users like "deddy armanda"
       // Post: 10, Scientific: +5, Comment: 2, Interaction Received: 2
@@ -1591,8 +1612,7 @@ app.get("/api/leaderboard", async (req, res) => {
 
     res.json(leaderboard);
   } catch (error: any) {
-    console.error("[Leaderboard Catch Error]:", error);
-    res.status(500).json({ error: error.message || "Terjadi kesalahan pada server" });
+    handleSupabaseError(error, res, "Leaderboard Catch");
   }
 });
 
