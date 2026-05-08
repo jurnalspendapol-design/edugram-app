@@ -29,20 +29,33 @@ if (typeof window !== 'undefined') {
     // Suppress noise from known benign rejections if any
     if (event.reason === 'cancel' || (event.reason && event.reason.message === 'cancel')) return;
 
-    console.error('Unhandled promise rejection:', event.reason);
-    
-    if (event.reason instanceof Error) {
-        console.error('Error info:', {
-          message: event.reason.message,
-          name: event.reason.name,
-          stack: event.reason.stack
-        });
-    } else {
-        try {
-          console.error('Non-error reason info:', JSON.stringify(event.reason));
-        } catch (e) {
-          console.error('Non-error reason (circular?):', event.reason);
+    try {
+      const reason = event.reason;
+      console.group('⚠️ Unhandled promise rejection');
+      console.error('Type:', event.type);
+      
+      if (reason) {
+        console.error('Rejection Reason:', reason);
+        if (reason instanceof Error) {
+          console.error('Message:', reason.message || '(no message)');
+          console.error('Stack:', reason.stack || '(no stack)');
+        } else if (typeof reason === 'object') {
+          try {
+            console.error('Reason Object:', JSON.stringify(reason, null, 2));
+          } catch (e) {
+            console.error('Reason Object (unserializable):', reason);
+          }
+        } else {
+          console.error('Reason Stringified:', String(reason));
         }
+      } else {
+        console.error('Rejection Reason is null, undefined, or empty');
+      }
+      
+      console.error('Promise:', event.promise);
+      console.groupEnd();
+    } catch (err) {
+      console.error('Fatal error in unhandledrejection listener:', err);
     }
   });
 }
@@ -132,31 +145,31 @@ const PostMap = ({ lat, lng, caption }: { lat: number, lng: number, caption: str
 };
 
 const LMSMaterial = ({ material }: { material: any }) => (
-  <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] hover:shadow-md transition-shadow group">
-    <div className="flex items-start gap-3">
-      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-        material.type === 'video' ? 'bg-red-100 text-red-600' : 
-        material.type === 'link' ? 'bg-blue-100 text-blue-600' : 
-        'bg-green-100 text-green-600'
-      }`}>
-        {material.type === 'video' ? <Play className="w-5 h-5" /> : 
-         material.type === 'link' ? <ExternalLink className="w-5 h-5" /> : 
-         <FileText className="w-5 h-5" />}
-      </div>
-      <div className="flex-1 min-w-0">
-        <h4 className="font-bold text-[#4A4036] truncate group-hover:text-[#8A9A5B] transition-colors">{material.title}</h4>
-        <p className="text-xs text-[#A8A096] line-clamp-2 mt-1">{material.description || 'Tidak ada deskripsi'}</p>
-        <div className="flex items-center gap-3 mt-3">
-          <span className="text-[10px] text-[#A8A096] flex items-center gap-1">
-            <Clock className="w-3 h-3" /> {new Date(material.created_at).toLocaleDateString()}
-          </span>
-          <button className="text-[10px] font-bold text-[#8A9A5B] hover:underline uppercase tracking-wider">
-            Buka Materi
-          </button>
+    <div className={`p-4 bg-white rounded-2xl border border-[#E5E0D8] hover:shadow-md transition-shadow group ${className || ''}`}>
+      <div className="flex items-start gap-3">
+        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+          material.type === 'video' ? 'bg-red-100 text-red-600' : 
+          material.type === 'link' ? 'bg-blue-100 text-blue-600' : 
+          'bg-green-100 text-green-600'
+        }`}>
+          {material.type === 'video' ? <Play className="w-5 h-5" /> : 
+           material.type === 'link' ? <ExternalLink className="w-5 h-5" /> : 
+           <FileText className="w-5 h-5" />}
+        </div>
+        <div className="flex-1 min-w-0">
+          <h4 className="font-bold text-[#4A4036] text-sm sm:text-base truncate group-hover:text-[#8A9A5B] transition-colors">{material.title}</h4>
+          <p className="text-xs text-[#A8A096] line-clamp-2 mt-1 leading-relaxed">{material.description || 'Tidak ada deskripsi'}</p>
+          <div className="flex items-center gap-3 mt-3">
+            <span className="text-[10px] sm:text-xs text-[#A8A096] flex items-center gap-1">
+              <Clock className="w-3 h-3" /> {new Date(material.created_at).toLocaleDateString()}
+            </span>
+            <button className="text-[10px] sm:text-xs font-bold text-[#8A9A5B] hover:underline uppercase tracking-wider">
+              Buka Materi
+            </button>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 );
 
 const LMSAssignment = ({ assignment, onOpen }: { assignment: any, onOpen: () => void }) => {
@@ -683,30 +696,54 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
   const [isUploading, setIsUploading] = useState(false);
 
   const fetchProfile = () => {
+    if (!user?.id || !currentUser?.id) return;
     Promise.all([
-      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`).then(res => {
-        if (!res.ok) throw new Error('Gagal mengambil profil');
+      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`).then(async res => {
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || `Gagal mengambil profil (Status: ${res.status})`);
+        }
         return res.json();
       }),
-      fetch(`/api/users/${user.id}/followers`).then(res => {
-        if (!res.ok) return [];
-        return res.json();
-      }).catch(() => []),
-      fetch(`/api/posts?authorId=${user.id}`).then(res => {
-        if (!res.ok) return [];
-        return res.json();
-      }).catch(() => [])
+      fetch(`/api/users/${user.id}/followers`).then(async res => {
+        if (!res.ok) {
+          console.warn(`Followers fetch failed with status ${res.status}`);
+          return [];
+        }
+        return res.json().catch((err) => {
+          console.error("Followers JSON parse error:", err);
+          return [];
+        });
+      }).catch(err => {
+        console.warn("Followers fetch network/promise error (non-fatal):", err);
+        return [];
+      }),
+      fetch(`/api/posts?authorId=${user.id}`).then(async res => {
+        if (!res.ok) {
+          console.warn(`Posts fetch failed with status ${res.status}`);
+          return [];
+        }
+        return res.json().catch((err) => {
+          console.error("Posts JSON parse error:", err);
+          return [];
+        });
+      }).catch(err => {
+        console.warn("Posts fetch network/promise error (non-fatal):", err);
+        return [];
+      })
     ])
       .then(([profileRes, followersRes, postsRes]) => {
-        setProfileData(profileRes);
-        setEditBio(profileRes.bio || '');
-        setIsFollowing(profileRes.isFollowing);
+        if (profileRes) {
+          setProfileData(profileRes);
+          setEditBio(profileRes.bio || '');
+          setIsFollowing(profileRes.isFollowing);
+        }
         setFollowers(Array.isArray(followersRes) ? followersRes : []);
         setPosts(Array.isArray(postsRes) ? postsRes : []);
         setLoading(false);
       })
       .catch(err => {
-        console.error(err);
+        console.error("Profile fetch error:", err);
         setLoading(false);
       });
   };
@@ -784,8 +821,8 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
         fetchProfile();
       } else {
         setIsFollowing(previousState); // Revert on error
-        const data = await res.json();
-        alert(data.error || "Gagal mengikuti pengguna. Pastikan tabel 'follows' sudah dibuat di Supabase.");
+        const data = await res.json().catch(() => ({}));
+        alert(data.error || "Gagal mengikuti pengguna");
       }
     } catch (err) {
       setIsFollowing(previousState); // Revert on error
@@ -1250,7 +1287,7 @@ const ReportModal = ({
         alert('Terima kasih. Laporan Anda telah kami terima dan akan segera ditinjau.');
         onClose();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         alert(data.error || 'Gagal mengirim laporan');
       }
     } catch (err) {
@@ -1636,17 +1673,31 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
   const fetchMaterials = async (groupId: string) => {
     try {
       const res = await fetch(`/api/groups/${groupId}/materials`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Gagal mengambil materi (Status: ${res.status})`);
+      }
       const data = await res.json();
       setMaterials(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); }
+    } catch (e: any) { 
+      console.error("Fetch materials error:", e);
+      setMaterials([]); // Ensure state is cleared on error
+    }
   };
 
   const fetchAssignments = async (groupId: string) => {
     try {
       const res = await fetch(`/api/groups/${groupId}/assignments`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Gagal mengambil tugas (Status: ${res.status})`);
+      }
       const data = await res.json();
       setAssignments(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); }
+    } catch (e: any) { 
+      console.error("Fetch assignments error:", e);
+      setAssignments([]);
+    }
   };
 
   const handleCreateMaterial = async (e: React.FormEvent) => {
@@ -1662,8 +1713,14 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
         setIsAddingMaterial(false);
         setNewMaterial({ title: '', description: '', content: '', type: 'document' });
         fetchMaterials(selectedGroup.id);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal menambahkan materi');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      alert('Terjadi kesalahan koneksi saat menambahkan materi');
+    }
   };
 
   const handleCreateAssignment = async (e: React.FormEvent) => {
@@ -1679,8 +1736,14 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
         setIsAddingAssignment(false);
         setNewAssignment({ title: '', description: '', dueDate: '', points: 100 });
         fetchAssignments(selectedGroup.id);
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal membuat penugasan');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      alert('Terjadi kesalahan koneksi saat membuat penugasan');
+    }
   };
 
   const handleSubmitAssignment = async (e: React.FormEvent) => {
@@ -1696,16 +1759,29 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
         setSelectedAssignment(null);
         setMySubmission('');
         alert('Tugas berhasil dikirim!');
+      } else {
+        const errorData = await res.json().catch(() => ({}));
+        alert(errorData.error || 'Gagal mengirim tugas');
       }
-    } catch (e) { console.error(e); }
+    } catch (e) { 
+      console.error(e);
+      alert('Terjadi kesalahan koneksi saat mengirim tugas');
+    }
   };
 
   const fetchSubmissions = async (assignmentId: string) => {
     try {
       const res = await fetch(`/api/assignments/${assignmentId}/submissions`);
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `Gagal mengambil pengumpulan (Status: ${res.status})`);
+      }
       const data = await res.json();
       setSubmissions(Array.isArray(data) ? data : []);
-    } catch (e) { console.error(e); }
+    } catch (e: any) { 
+      console.error("Fetch submissions error:", e);
+      setSubmissions([]);
+    }
   };
 
   useEffect(() => {
@@ -2896,33 +2972,35 @@ export default function App() {
         setIsLoggedIn(true);
         
         // Refresh user data from server to ensure it's not mock data
-        fetch(`/api/users/${profile.id}`)
-          .then(res => {
-            if (!res.ok) throw new Error('Gagal memuat profil');
-            return res.json();
-          })
-          .then(data => {
-            if (data && !data.error) {
-              const updatedProfile = {
-                ...data,
-                fullName: data.fullName || data.full_name,
-                className: data.className || data.class_name,
-                studentNumber: data.studentNumber || data.student_number,
-                schoolName: data.schoolName || data.school_name || "Sekolah EduGram",
-                profilePictureUrl: data.profilePictureUrl || data.profile_picture_url || "",
-                bio: data.bio || "",
-                role: data.role || (data.id.toString().includes('TEACHER') ? 'teacher' : 'student'),
-                xp: data.xp || 0,
-                interactions: data.interactions || 0,
-                streak: data.streak || 0,
-                followersCount: data.followersCount || 0,
-                followingCount: data.followingCount || 0
-              };
-              setCurrentUser(updatedProfile);
-              localStorage.setItem('edugram_user_profile', JSON.stringify(updatedProfile));
-            }
-          })
-          .catch(err => console.error("Failed to refresh user profile", err));
+        if (profile && profile.id) {
+          fetch(`/api/users/${profile.id}`)
+            .then(res => {
+              if (!res.ok) throw new Error('Gagal memuat profil');
+              return res.json();
+            })
+            .then(data => {
+              if (data && !data.error) {
+                const updatedProfile = {
+                  ...data,
+                  fullName: data.fullName || data.full_name,
+                  className: data.className || data.class_name,
+                  studentNumber: data.studentNumber || data.student_number,
+                  schoolName: data.schoolName || data.school_name || "Sekolah EduGram",
+                  profilePictureUrl: data.profilePictureUrl || data.profile_picture_url || "",
+                  bio: data.bio || "",
+                  role: data.role || (data.id.toString().includes('TEACHER') ? 'teacher' : 'student'),
+                  xp: data.xp || 0,
+                  interactions: data.interactions || 0,
+                  streak: data.streak || 0,
+                  followersCount: data.followersCount || 0,
+                  followingCount: data.followingCount || 0
+                };
+                setCurrentUser(updatedProfile);
+                localStorage.setItem('edugram_user_profile', JSON.stringify(updatedProfile));
+              }
+            })
+            .catch(err => console.error("Failed to refresh user profile from server:", err));
+        }
       } catch (e) {
         console.error("Failed to parse saved user", e);
       }
@@ -3032,7 +3110,7 @@ export default function App() {
       if (res.ok) {
         fetchData();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         alert(data.error || 'Gagal menghapus postingan');
       }
     } catch (err) {
@@ -3065,7 +3143,7 @@ export default function App() {
         setEditingPost(null);
         fetchData();
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         alert(data.error || 'Gagal memperbarui postingan');
       }
     } catch (err) {
@@ -3161,7 +3239,7 @@ export default function App() {
         setGameLevel(1);
         // fetchData(); // No longer need full fetch
       } else {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         let errorMessage = data.error || 'Gagal mengirim postingan';
         if (data.hint) {
           errorMessage += `\n\nTips: ${data.hint}`;
@@ -3260,58 +3338,58 @@ export default function App() {
 
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[#8A9A5B] text-[#F4F1EA] shadow-md">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Leaf className="w-6 h-6" />
-            <h1 className="text-xl font-bold tracking-tight hidden sm:block">EduGram</h1>
-            <span className="text-xs font-medium bg-[#7A8A4B] px-2 py-1 rounded-full sm:ml-2 hidden md:block">Eco-Influencer</span>
+        <div className="max-w-5xl mx-auto px-4 h-14 md:h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <Leaf className="w-5 h-5 sm:w-6 sm:h-6" />
+            <h1 className="text-lg sm:text-xl font-bold tracking-tight">EduGram</h1>
+            <span className="text-[10px] font-medium bg-[#7A8A4B] px-2 py-0.5 rounded-full hidden md:block">Eco-Influencer</span>
           </div>
           
-          <GlobalSearch 
-            onUserSelect={(u) => { 
-              setView('profile'); 
-              setSelectedUserForProfile({ 
-                id: u.id, 
-                fullName: u.full_name, 
-                username: u.username, 
-                role: u.role 
-              } as any); 
-            }}
-            onPostSelect={(postId) => { 
-              setView('feed'); 
-              setTimeout(() => {
-                document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-              }, 500);
-            }}
-            onGroupSelect={(groupId) => { setInitialGroupId(groupId); setView('groups'); }}
-          />
+          <div className="flex-1 max-w-sm">
+            <GlobalSearch 
+              onUserSelect={(u) => { 
+                setView('profile'); 
+                setSelectedUserForProfile({ 
+                  id: u.id, 
+                  fullName: u.full_name, 
+                  username: u.username, 
+                  role: u.role 
+                } as any); 
+              }}
+              onPostSelect={(postId) => { 
+                setView('feed'); 
+                setTimeout(() => {
+                  document.getElementById(`post-${postId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }, 500);
+              }}
+              onGroupSelect={(groupId) => { setInitialGroupId(groupId); setView('groups'); }}
+            />
+          </div>
 
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => setIsTutorialOpen(true)}
-              className="p-2 hover:bg-[#7A8A4B] rounded-full transition-colors text-white/80 hover:text-white"
-              title="Panduan Penggunaan"
-            >
-              <MessageCircleQuestion className="w-5 h-5" />
-            </button>
-            <button onClick={() => setView('feed')} className={`text-sm font-bold ${(view as string) === 'feed' ? 'text-white' : 'text-white/70'}`}>Feed</button>
-            <button onClick={() => setView('groups')} className={`text-sm font-bold ${(view as string) === 'groups' ? 'text-white' : 'text-white/70'}`}>Grup</button>
-            <button onClick={() => setView('profile')} className={`text-sm font-bold ${(view as string) === 'profile' ? 'text-white' : 'text-white/70'}`}>Profil</button>
-            <div className="w-px h-6 bg-[#8A9A5B] mx-2"></div>
+          <div className="flex items-center gap-1 sm:gap-3 shrink-0">
+            <div className="hidden md:flex items-center gap-3 mr-2">
+              <button 
+                onClick={() => setIsTutorialOpen(true)}
+                className="p-2 hover:bg-[#7A8A4B] rounded-full transition-colors text-white/80 hover:text-white"
+                title="Panduan Penggunaan"
+              >
+                <MessageCircleQuestion className="w-5 h-5" />
+              </button>
+              <button onClick={() => setView('feed')} className={`text-sm font-bold transition-opacity ${view === 'feed' ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}>Feed</button>
+              <button onClick={() => setView('groups')} className={`text-sm font-bold transition-opacity ${(view as string) === 'groups' ? 'opacity-100' : 'opacity-70 hover:opacity-100'}`}>Grup</button>
+            </div>
+            
             <button 
               onClick={() => setView('profile')}
-              className="flex items-center gap-3 bg-[#7A8A4B] hover:bg-[#6A7A3B] px-4 py-1.5 rounded-full transition-colors cursor-pointer"
+              className="flex items-center gap-1.5 sm:gap-3 bg-[#7A8A4B] hover:bg-[#6A7A3B] px-2 sm:px-4 py-1.5 rounded-full transition-colors cursor-pointer"
             >
-              <span className="text-sm font-medium hidden sm:block">{currentUser.fullName}</span>
-              <span className="text-xs font-bold bg-[#8A9A5B] px-1.5 py-0.5 rounded text-white">
-                {currentUser.role === 'teacher' ? 'Guru' : currentUser.className}
-              </span>
-              <div className="w-1 h-1 bg-[#F4F1EA] rounded-full opacity-50 hidden sm:block"></div>
+              <span className="text-xs sm:text-sm font-medium hidden xs:block truncate max-w-[80px] sm:max-w-none">{currentUser.fullName?.split(' ')[0]}</span>
               <UserCircle2 className="w-5 h-5 text-[#D2B48C]" />
             </button>
+            
             <button 
               onClick={handleLogout}
-              className="p-2 hover:bg-[#7A8A4B] rounded-full transition-colors text-white/80 hover:text-white"
+              className="p-1.5 sm:p-2 hover:bg-[#7A8A4B] rounded-full transition-colors text-white/80 hover:text-white"
               title="Keluar"
             >
               <LogOut className="w-5 h-5" />
@@ -3320,7 +3398,7 @@ export default function App() {
         </div>
       </header>
 
-      <main className="max-w-5xl mx-auto px-4 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <main className="max-w-5xl mx-auto px-4 py-4 md:py-8 grid grid-cols-1 lg:grid-cols-3 gap-6 md:gap-8">
         
         {/* Left Column: Feed & Input */}
         <div className="lg:col-span-2 space-y-6">
@@ -3738,8 +3816,7 @@ export default function App() {
             )}
           </div>
 
-          {/* Interactive Eco-Map - Compact Bar */}
-          <EcoMap posts={posts} />
+          {/* EcoMap removed from Feed bottom */}
         </div>
 
         {/* Right Column: Leaderboard */}
@@ -3756,7 +3833,7 @@ export default function App() {
             post={selectedPostForReport} 
             reporterId={currentUser.id} 
           />
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-5 sticky top-24 space-y-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-4 sm:p-5 sticky md:top-24 space-y-6">
             {/* Eco-Arcade Mini Games */}
             <div>
               <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
@@ -3803,6 +3880,17 @@ export default function App() {
               </div>
             </div>
 
+            {/* Interactive Eco-Map - Compact Sidebar Map */}
+            <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm">
+              <h2 className="font-bold text-sm mb-3 flex items-center gap-2 text-[#8A9A5B]">
+                <Globe className="w-4 h-4" />
+                Sebaran Edu-Aksi
+              </h2>
+              <div className="rounded-xl overflow-hidden h-48 border border-[#E5E0D8]">
+                <EcoMap posts={posts} />
+              </div>
+            </div>
+
             <div>
               <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-[#D2B48C]" />
@@ -3846,6 +3934,7 @@ export default function App() {
                 ))}
               </div>
             )}
+            </div>
             
             <div className="mt-6 pt-5 border-t border-[#E5E0D8]">
               <h3 className="text-xs font-bold text-[#A8A096] uppercase tracking-wider mb-3">Cara Dapat XP:</h3>
@@ -3866,9 +3955,9 @@ export default function App() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
 
-        {/* Edit Post Modal */}
+      {/* Edit Post Modal */}
         {editingPost && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-300">
@@ -3935,8 +4024,6 @@ export default function App() {
             </div>
           </div>
         )}
-      
-      </main>
 
       {/* Add custom animation for particles */}
       <style dangerouslySetInnerHTML={{__html: `
@@ -3962,27 +4049,27 @@ export default function App() {
       <BangEko />
 
       {/* Modern Floating Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-[#E5E0D8] z-[60] flex items-center justify-around h-20 md:hidden px-4 pb-4">
-        <button onClick={() => setView('feed')} className={`flex flex-col items-center gap-1 transition-all ${view === 'feed' ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
-          <Home className={`w-6 h-6 ${view === 'feed' ? 'fill-[#8A9A5B]' : ''}`} />
-          <span className="text-[10px] font-bold">Feed</span>
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-lg border-t border-[#E5E0D8] z-[60] flex items-center justify-around h-16 md:hidden px-4">
+        <button onClick={() => setView('feed')} className={`flex flex-col items-center gap-0.5 transition-all outline-none ${view === 'feed' ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <Home className={`w-5 h-5 ${view === 'feed' ? 'fill-current' : ''}`} />
+          <span className="text-[10px] font-bold">Beranda</span>
         </button>
-        <button onClick={() => setView('groups')} className={`flex flex-col items-center gap-1 transition-all ${(view as string) === 'groups' ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
-          <Users className={`w-6 h-6 ${(view as string) === 'groups' ? 'fill-current' : ''}`} />
+        <button onClick={() => setView('groups')} className={`flex flex-col items-center gap-0.5 transition-all outline-none ${(view as string) === 'groups' ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <Users className={`w-5 h-5 ${(view as string) === 'groups' ? 'fill-current' : ''}`} />
           <span className="text-[10px] font-bold">Grup</span>
         </button>
         <button 
           onClick={() => setIsPostModalOpen(true)} 
-          className="w-14 h-14 bg-[#8A9A5B] rounded-2xl flex items-center justify-center shadow-lg shadow-[#8A9A5B]/30 -translate-y-8 border-4 border-[#F4F1EA] text-white active:scale-90 transition-transform"
+          className="w-12 h-12 bg-[#8A9A5B] rounded-2xl flex items-center justify-center shadow-lg shadow-[#8A9A5B]/30 -translate-y-4 border-4 border-[#F4F1EA] text-white active:scale-90 transition-transform"
         >
-          <Plus className="w-8 h-8" />
+          <Plus className="w-7 h-7" />
         </button>
-        <button onClick={() => setIsLeaderboardOpen(true)} className={`flex flex-col items-center gap-1 transition-all ${isLeaderboardOpen ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
-          <Trophy className={`w-6 h-6 ${isLeaderboardOpen ? 'fill-current text-yellow-500' : ''}`} />
+        <button onClick={() => setIsLeaderboardOpen(true)} className={`flex flex-col items-center gap-0.5 transition-all outline-none ${isLeaderboardOpen ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <Trophy className={`w-5 h-5 ${isLeaderboardOpen ? 'fill-current text-yellow-500' : ''}`} />
           <span className="text-[10px] font-bold">Juara</span>
         </button>
-        <button onClick={() => { setView('profile'); setSelectedUserForProfile(null); }} className={`flex flex-col items-center gap-1 transition-all ${(view as string) === 'profile' && !selectedUserForProfile ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
-          <User className={`w-6 h-6 ${(view as string) === 'profile' && !selectedUserForProfile ? 'fill-current' : ''}`} />
+        <button onClick={() => { setView('profile'); setSelectedUserForProfile(null); }} className={`flex flex-col items-center gap-0.5 transition-all outline-none ${(view as string) === 'profile' && !selectedUserForProfile ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <User className={`w-5 h-5 ${(view as string) === 'profile' && !selectedUserForProfile ? 'fill-current' : ''}`} />
           <span className="text-[10px] font-bold">Profil</span>
         </button>
       </nav>

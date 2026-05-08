@@ -37,18 +37,37 @@ const schemaCache: Record<string, string[]> = {};
 async function getTableColumns(supabase: SupabaseClient, tableName: string): Promise<string[]> {
   if (schemaCache[tableName]) return schemaCache[tableName];
   
-  console.log(`[Schema] Detecting schema for '${tableName}' table...`);
-  const { data, error } = await supabase.from(tableName).select('*').limit(1);
-  
-  if (error) {
-    console.warn(`[Schema] Schema detection warning for '${tableName}':`, error.message);
+  try {
+    console.log(`[Schema] Detecting schema for '${tableName}' table...`);
+    // Try to get one row to see what columns we actually have
+    const { data, error } = await supabase.from(tableName).select('*').limit(1);
+    
+    if (error) {
+      console.warn(`[Schema] Schema detection warning for '${tableName}':`, error.message);
+      
+      // If it's a column doesn't exist error (42703), it means the schema cache is stale
+      // and thinking some column exists that doesn't. 
+      // In this case, we'll try a very minimal select to at least confirm the table exists.
+      if (error.code === '42703') {
+        const { data: minimalData, error: minimalError } = await supabase.from(tableName).select('id').limit(1);
+        if (minimalData && !minimalError) {
+           console.log(`[Schema] Minimal fallback successful for '${tableName}'. Returning minimal column list.`);
+           const minCols = minimalData && (minimalData as any[]).length > 0 ? Object.keys(minimalData[0]) : ['id'];
+           schemaCache[tableName] = minCols;
+           return minCols;
+         }
+      }
+      return [];
+    }
+    
+    const columns = data && (data as any[]).length > 0 ? Object.keys(data[0]) : [];
+    schemaCache[tableName] = columns;
+    console.log(`[Schema] Detected columns for '${tableName}':`, columns);
+    return columns;
+  } catch (err) {
+    console.error(`[Schema] Fatal error detecting schema for '${tableName}':`, err);
     return [];
   }
-  
-  const columns = data && data.length > 0 ? Object.keys(data[0]) : [];
-  schemaCache[tableName] = columns;
-  console.log(`[Schema] Detected columns for '${tableName}':`, columns);
-  return columns;
 }
 
 async function getUserStreakInfo(userId: string, supabase: SupabaseClient) {
@@ -114,6 +133,7 @@ app.use((req, res, next) => {
 function handleSupabaseError(error: any, res: express.Response, context: string) {
   console.error(`[${context} Error]:`, error);
   const message = error.message || String(error);
+  const code = error.code || (error.details && error.details.code);
   
   if (message.includes('ENOTFOUND') || message.includes('fetch failed')) {
     return res.status(500).json({ 
@@ -122,10 +142,27 @@ function handleSupabaseError(error: any, res: express.Response, context: string)
       hint: "Pastikan SUPABASE_URL dan SUPABASE_ANON_KEY di Secrets sudah benar. Error ENOTFOUND biasanya berarti URL salah atau tidak dapat dijangkau."
     });
   }
+
+  // Handle missing column error (42703)
+  if (code === '42703' || message.includes('does not exist')) {
+    // Clear schema cache so it can be re-detected correctly next time
+    const tableMatch = message.match(/column "(.*?)"/i) || message.match(/column (.*?) /i);
+    // Alternatively, just clear all if we can't be sure
+    for (const key in schemaCache) {
+      delete schemaCache[key];
+    }
+    
+    return res.status(500).json({
+      error: `Gagal pada ${context}: Kolom database tidak ditemukan.`,
+      details: message,
+      hint: "Struktur database mungkin berubah. Kami sudah mereset cache skema. Silakan coba lagi. Jika masih gagal, jalankan /api/setup-db."
+    });
+  }
   
   res.status(500).json({ 
     error: `Gagal pada ${context}: ${message}`,
-    details: error
+    details: error,
+    code: code
   });
 }
 
@@ -196,6 +233,16 @@ CREATE TABLE IF NOT EXISTS follows (
   UNIQUE(follower_id, following_id)
 );
 
+-- Migrasi/Fix (Jika tabel sudah ada tapi kolom baru belum)
+-- Jalankan ini jika Anda melihat error "column does not exist"
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS is_mission BOOLEAN DEFAULT FALSE;
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS game_level INTEGER DEFAULT 1;
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS location_lat DOUBLE PRECISION;
+ALTER TABLE posts ADD COLUMN IF NOT EXISTS location_lng DOUBLE PRECISION;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS student_number TEXT DEFAULT '0';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS school_name TEXT DEFAULT 'Sekolah EduGram';
+
 -- 6. Tabel Reports
 CREATE TABLE IF NOT EXISTS reports (
   id TEXT PRIMARY KEY,
@@ -242,6 +289,7 @@ ALTER TABLE assignments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all for assignments" ON assignments FOR ALL USING (true) WITH CHECK (true);
 -- --- INDEXES ---
 CREATE INDEX IF NOT EXISTS idx_posts_created_at ON posts(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_posts_author_id ON posts(author_id);
 CREATE INDEX IF NOT EXISTS idx_comments_post_id ON comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_comments_author_id ON comments(author_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_post_id ON interactions(post_id);
@@ -1163,10 +1211,16 @@ app.get("/api/posts", async (req, res) => {
     const userId = req.query.userId as string;
     const authorId = req.query.authorId as string;
     
+    // Detect available columns for resilience
+    const availableColumns = await getTableColumns(supabase, 'posts');
+    const selectColumns = availableColumns.length > 0 
+      ? availableColumns.filter(c => c !== 'timestamp').join(', ') // filter out 'timestamp' if it was added by mistake elsewhere
+      : '*';
+
     let query = supabase
       .from('posts')
       .select(`
-        *,
+        ${selectColumns},
         users (
           full_name,
           class_name,
@@ -1180,22 +1234,25 @@ app.get("/api/posts", async (req, res) => {
       query = query.eq('author_id', authorId);
     }
       
-    const { data: posts, error } = await query;
+    const { data: postsData, error } = await query;
+    const posts = (postsData as any[]) || [];
       
     if (error) {
       return handleSupabaseError(error, res, "Get Posts");
     }
 
-    if (!posts) {
+    if (!posts || posts.length === 0) {
       return res.json([]);
     }
 
     const postIds = posts.map(p => p.id);
     
     // Fetch comment counts and user interactions for these posts in parallel
+    // OPTIMIZATION: Use specialized queries for counts if possible, but for now 
+    // we ensure we only fetch minimal data and use optimized filters.
     const [commentResult, interactionResult] = await Promise.all([
-      postIds.length > 0 ? supabase.from('comments').select('post_id').in('post_id', postIds) : { data: [] },
-      userId && postIds.length > 0 ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds) : { data: [] }
+      postIds.length > 0 ? supabase.from('comments').select('post_id').in('post_id', postIds).limit(1000) : { data: [] },
+      userId && postIds.length > 0 ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds).limit(1000) : { data: [] }
     ]);
 
     const commentCounts = commentResult.data || [];
@@ -1222,6 +1279,8 @@ app.get("/api/posts", async (req, res) => {
         support: p.support || 0,
         timestamp: p.created_at,
         isScientific: Boolean(p.is_scientific),
+        isMission: Boolean(p.is_mission),
+        gameLevel: p.game_level || 1,
         locationLat: p.location_lat,
         locationLng: p.location_lng,
         commentCount: count,
@@ -1915,18 +1974,24 @@ app.get("/api/search", async (req, res) => {
     // --- Search Posts ---
     let finalPosts: any[] = [];
     try {
-      const { data: samplePost } = await supabase.from('posts').select('*').limit(1);
-      const postCols = samplePost && samplePost.length > 0 ? Object.keys(samplePost[0]) : ['caption', 'subbab'];
+      const availableColumns = await getTableColumns(supabase, 'posts');
+      const postCols = availableColumns.length > 0 ? availableColumns : ['id', 'author_id', 'caption', 'subbab', 'created_at'];
       
-      const selectPostCols = ['id', 'author_id', 'created_at', 'image_url', 'is_scientific', 'insightful', 'ask', 'support'];
+      const selectPostCols = ['id', 'author_id', 'created_at'];
+      const possibleCols = ['image_url', 'is_scientific', 'insightful', 'ask', 'support', 'is_mission', 'game_level'];
+      
+      possibleCols.forEach(col => {
+        if (postCols.includes(col)) selectPostCols.push(col);
+      });
+
       ['caption', 'content', 'text', 'subbab'].forEach(col => {
         if (postCols.includes(col)) selectPostCols.push(col);
       });
       
       let userSelect = "user:users(*)";
       try {
-        const { data: relTest } = await supabase.from('posts').select('author_id(*)').limit(1);
-        if (relTest) userSelect = "user:author_id(*)";
+        const { data: relTest, error: relError } = await supabase.from('posts').select('author_id(*)').limit(1);
+        if (!relError && relTest) userSelect = "user:author_id(*)";
       } catch (e) {}
 
       let postQuery = supabase.from('posts').select(`${selectPostCols.join(',')}, ${userSelect}`);
@@ -1934,10 +1999,14 @@ app.get("/api/search", async (req, res) => {
       const escapedQ = q.replace(/,/g, '\\,');
       const postOrConditions = captionCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
       
-      const { data: dbPosts } = await postQuery.or(postOrConditions).order('created_at', { ascending: false }).limit(20);
+      const { data: dbPosts, error: searchError } = await postQuery.or(postOrConditions).order('created_at', { ascending: false }).limit(20);
+      if (searchError) {
+        console.warn("[Search Posts] Supabase search error:", searchError.message);
+        throw searchError;
+      }
       finalPosts = dbPosts || [];
     } catch (e) {
-      console.warn("Supabase post search failed, using fallbacks");
+      console.warn("Supabase post search failed, using fallbacks", e);
     }
 
     if (finalPosts.length < 5) {
