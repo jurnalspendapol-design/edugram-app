@@ -26,6 +26,7 @@ if (typeof window !== 'undefined') {
   });
   
   window.addEventListener('unhandledrejection', (event) => {
+    console.log('Got unhandled rejection', event);
     // Suppress noise from known benign rejections if any
     if (event.reason === 'cancel' || (event.reason && event.reason.message === 'cancel')) return;
 
@@ -110,7 +111,8 @@ const SOLUTION_KEYWORDS = ['solusi', 'tanam', 'pohon', 'daur ulang', 'hemat', 'b
 
 import HeatmapLayer from './components/HeatmapLayer';
 
-const PostMap = ({ lat, lng, caption }: { lat: number, lng: number, caption: string }) => {
+const PostMap = ({ lat, lng, caption }: { lat?: number, lng?: number, caption: string }) => {
+  if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) return null;
   const center: [number, number] = [lat, lng];
   const isIssue = ISSUE_KEYWORDS.some(k => caption.toLowerCase().includes(k));
 
@@ -207,7 +209,10 @@ const LMSAssignment = ({ assignment, onOpen }: { assignment: any, onOpen: () => 
 };
 
 const EcoMap = ({ posts }: { posts: Post[] }) => {
-  const mapPosts = posts.filter(p => p.locationLat != null && p.locationLng != null);
+  const mapPosts = posts.filter(p => 
+    p.locationLat != null && !isNaN(p.locationLat) && 
+    p.locationLng != null && !isNaN(p.locationLng)
+  );
   
   // Prepare heatmap points (only for issues)
   const heatmapPoints: [number, number, number][] = mapPosts
@@ -2940,7 +2945,7 @@ export default function App() {
   const handleInstallClick = async () => {
     if (!deferredPrompt) return;
     try {
-      deferredPrompt.prompt();
+      await deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') setDeferredPrompt(null);
     } catch (e) {
@@ -3351,7 +3356,7 @@ export default function App() {
       {/* Floating Tutorial Button */}
       <button
         onClick={() => setIsTutorialOpen(true)}
-        className="fixed bottom-6 left-6 z-[90] flex items-center gap-2 bg-white text-[#8A9A5B] px-4 py-3 rounded-full shadow-xl border-2 border-[#8A9A5B] hover:bg-[#8A9A5B] hover:text-white transition-all group hover:scale-105"
+        className="fixed bottom-32 left-6 z-[90] flex items-center gap-2 bg-white text-[#8A9A5B] px-4 py-3 rounded-full shadow-xl border-2 border-[#8A9A5B] hover:bg-[#8A9A5B] hover:text-white transition-all group hover:scale-105"
       >
         <MessageCircleQuestion className="w-6 h-6" />
         <span className="font-bold text-sm hidden sm:block group-hover:block">Cara Pakai EduGram</span>
