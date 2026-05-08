@@ -2881,6 +2881,21 @@ const GUEST_USER: UserProfile = {
   followingCount: 0
 };
 
+const InstallPrompt = ({ onInstall, onClose }: { onInstall: () => void, onClose: () => void }) => (
+  <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-in fade-in duration-300">
+    <div className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl relative">
+      <button onClick={onClose} className="absolute right-4 top-4 p-1 hover:bg-gray-100 rounded-full">
+        <X className="w-5 h-5 text-gray-500" />
+      </button>
+      <h3 className="font-bold text-lg mb-2">Install EduGram</h3>
+      <p className="text-sm text-gray-600 mb-6">Install aplikasi ini untuk akses lebih cepat!</p>
+      <button onClick={onInstall} className="w-full bg-[#8A9A5B] text-white py-3 rounded-2xl font-bold hover:bg-[#7A8A4B] transition-all">
+        Install
+      </button>
+    </div>
+  </div>
+);
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_USER);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -2908,11 +2923,17 @@ export default function App() {
   const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
 
   useEffect(() => {
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       setDeferredPrompt(e);
+      // Show prompt once if not yet shown
+      if (!localStorage.getItem('install_popup_shown')) {
+        setShowInstallPrompt(true);
+        localStorage.setItem('install_popup_shown', 'true');
+      }
     });
   }, []);
 
@@ -4075,19 +4096,11 @@ export default function App() {
       </nav>
 
       {/* Floating Install Prompt */}
-      {deferredPrompt && (
-        <div className="fixed top-4 right-4 z-[110] animate-in bounce-in slide-in-from-top duration-500 pointer-events-none">
-          <button 
-            onClick={handleInstallClick}
-            className="bg-[#8A9A5B] text-white px-4 py-3 rounded-2xl shadow-2xl border-2 border-white font-bold flex items-center gap-2 hover:scale-105 active:scale-95 transition-all pointer-events-auto"
-          >
-            <Download className="w-5 h-5" /> 
-            <div className="flex flex-col items-start leading-tight">
-              <span className="text-xs">Install EduGram</span>
-              <span className="text-[8px] opacity-80 whitespace-nowrap text-left italic">Aksi Nyata untuk Bumi</span>
-            </div>
-          </button>
-        </div>
+      {showInstallPrompt && deferredPrompt && (
+        <InstallPrompt 
+          onInstall={handleInstallClick} 
+          onClose={() => setShowInstallPrompt(false)} 
+        />
       )}
 
       {/* Mobile Leaderboard Drawer */}

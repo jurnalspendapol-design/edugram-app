@@ -13,7 +13,7 @@ const BangEko = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100]">
+    <div className="fixed bottom-24 right-6 z-[100]">
       {isOpen && (
         <div className="absolute bottom-16 right-0 w-72 bg-white rounded-2xl shadow-2xl border border-[#E5E0D8] p-4 animate-in fade-in slide-in-from-bottom-4 duration-300">
           <div className="flex items-center justify-between mb-3">
