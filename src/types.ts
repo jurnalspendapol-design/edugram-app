@@ -1,4 +1,4 @@
-export type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
+export type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan' | 'Keanekaragaman Hayati' | 'Konservasi Air' | 'Pengolahan Limbah' | 'Ekosistem Laut';
 
 export interface UserProfile {
   id: string;

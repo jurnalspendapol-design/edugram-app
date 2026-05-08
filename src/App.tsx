@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
-import { UserProfile, Post, Comment, UserStats } from './types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { UserProfile, Post, Comment, UserStats, Subbab } from './types';
 import { ECO_FACTS, SCIENTIFIC_KEYWORDS, DAILY_QUESTS, SUBBAB_COLORS } from './constants';
 import BangEko from './components/BangEko';
 import ReactMarkdown from 'react-markdown';
-import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2, Info } from 'lucide-react';
+import { Lightbulb, MessageCircleQuestion, Heart, CheckCircle2, Leaf, Sparkles, Send, Image as ImageIcon, LogOut, UserCircle2, ArrowLeft, Trophy, Flame, MessageSquare, X, Plus, Trash2, AlertTriangle, Flag, MoreVertical, Pencil, MapPin, Map as MapIcon, Gamepad2, Zap, Globe, Shield, Tv, Wind, Refrigerator, Search, Phone, Mail, Instagram, Loader2, Info, Play, ExternalLink, FileText, BookCheck, Calendar, Clock, Download, Home, User, PlusSquare, Users, Users2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -25,11 +26,23 @@ if (typeof window !== 'undefined') {
   });
   
   window.addEventListener('unhandledrejection', (event) => {
+    // Suppress noise from known benign rejections if any
+    if (event.reason === 'cancel' || (event.reason && event.reason.message === 'cancel')) return;
+
     console.error('Unhandled promise rejection:', event.reason);
+    
     if (event.reason instanceof Error) {
-        console.error('Stack trace:', event.reason.stack);
+        console.error('Error info:', {
+          message: event.reason.message,
+          name: event.reason.name,
+          stack: event.reason.stack
+        });
     } else {
-        console.error('Reason is not an Error object:', JSON.stringify(event.reason));
+        try {
+          console.error('Non-error reason info:', JSON.stringify(event.reason));
+        } catch (e) {
+          console.error('Non-error reason (circular?):', event.reason);
+        }
     }
   });
 }
@@ -73,10 +86,6 @@ const greenIcon = new L.Icon({
   shadowSize: [41, 41]
 });
 
-type Subbab = 'Kesehatan Lingkungan' | 'Pemanasan Global' | 'Krisis Energi' | 'Ketahanan Pangan';
-
-
-
 
 import DailyQuestBanner from './components/DailyQuestBanner';
 
@@ -87,6 +96,102 @@ const ISSUE_KEYWORDS = ['limbah', 'polusi', 'sampah', 'kotor', 'asap', 'emisi', 
 const SOLUTION_KEYWORDS = ['solusi', 'tanam', 'pohon', 'daur ulang', 'hemat', 'bersih', 'hijau', 'surya', 'kompos', 'organik', 'sepeda', 'jalan', 'tumbler', 'bibit', 'pupuk', 'biogas', 'manggrove'];
 
 import HeatmapLayer from './components/HeatmapLayer';
+
+const PostMap = ({ lat, lng, caption }: { lat: number, lng: number, caption: string }) => {
+  const center: [number, number] = [lat, lng];
+  const isIssue = ISSUE_KEYWORDS.some(k => caption.toLowerCase().includes(k));
+
+  return (
+    <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8] h-[150px] relative z-0">
+      <MapContainer 
+        center={center} 
+        zoom={14} 
+        style={{ height: '100%', width: '100%' }}
+        scrollWheelZoom={false}
+        zoomControl={false}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <Marker 
+          position={center}
+          icon={L.divIcon({
+            className: 'custom-div-icon',
+            html: `<div style="background-color: ${isIssue ? '#EF4444' : '#22C55E'}; width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+          })}
+        />
+      </MapContainer>
+      <div className="absolute bottom-2 right-2 z-[1000] bg-white/90 backdrop-blur-sm px-2 py-0.5 rounded text-[8px] font-bold text-[#4A4036] border border-[#E5E0D8] pointer-events-none">
+        Lokasi Tersemat
+      </div>
+    </div>
+  );
+};
+
+const LMSMaterial = ({ material }: { material: any }) => (
+  <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] hover:shadow-md transition-shadow group">
+    <div className="flex items-start gap-3">
+      <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+        material.type === 'video' ? 'bg-red-100 text-red-600' : 
+        material.type === 'link' ? 'bg-blue-100 text-blue-600' : 
+        'bg-green-100 text-green-600'
+      }`}>
+        {material.type === 'video' ? <Play className="w-5 h-5" /> : 
+         material.type === 'link' ? <ExternalLink className="w-5 h-5" /> : 
+         <FileText className="w-5 h-5" />}
+      </div>
+      <div className="flex-1 min-w-0">
+        <h4 className="font-bold text-[#4A4036] truncate group-hover:text-[#8A9A5B] transition-colors">{material.title}</h4>
+        <p className="text-xs text-[#A8A096] line-clamp-2 mt-1">{material.description || 'Tidak ada deskripsi'}</p>
+        <div className="flex items-center gap-3 mt-3">
+          <span className="text-[10px] text-[#A8A096] flex items-center gap-1">
+            <Clock className="w-3 h-3" /> {new Date(material.created_at).toLocaleDateString()}
+          </span>
+          <button className="text-[10px] font-bold text-[#8A9A5B] hover:underline uppercase tracking-wider">
+            Buka Materi
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const LMSAssignment = ({ assignment, onOpen }: { assignment: any, onOpen: () => void }) => {
+  const isPastDue = new Date(assignment.due_date) < new Date();
+  
+  return (
+    <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] hover:shadow-md transition-shadow relative overflow-hidden">
+      {isPastDue && <div className="absolute top-0 right-0 bg-red-500 text-white text-[8px] font-bold px-2 py-0.5 rounded-bl-lg">TERLAMBAT</div>}
+      <div className="flex items-start gap-4">
+        <div className="w-12 h-12 bg-orange-100 text-orange-600 rounded-2xl flex items-center justify-center shrink-0">
+          <BookCheck className="w-6 h-6" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-start justify-between">
+            <h4 className="font-bold text-[#4A4036] truncate mr-2">{assignment.title}</h4>
+            <span className="text-xs font-bold text-[#8A9A5B] shrink-0">{assignment.points} Poin</span>
+          </div>
+          <p className="text-xs text-[#A8A096] line-clamp-1 mt-1">{assignment.description || 'Kerjakan tugas ini dengan baik!'}</p>
+          <div className="flex items-center gap-4 mt-4">
+            <div className="flex items-center gap-1 text-[10px] text-[#A8A096]">
+              <Calendar className="w-3 h-3" />
+              Tenggat: <span className={isPastDue ? 'text-red-500 font-bold' : ''}>{new Date(assignment.due_date).toLocaleDateString()}</span>
+            </div>
+            <button 
+              onClick={onOpen}
+              className="ml-auto bg-[#8A9A5B] text-white px-3 py-1 rounded-lg text-[10px] font-bold hover:bg-[#7A8A4B] transition-colors"
+            >
+              Lihat Detail
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const EcoMap = ({ posts }: { posts: Post[] }) => {
   const mapPosts = posts.filter(p => p.locationLat != null && p.locationLng != null);
@@ -773,8 +878,9 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
               ) : (
                 <button 
                   onClick={handleFollow}
-                  className={`px-4 py-1 rounded-full text-xs font-bold transition-all relative z-20 ${isFollowing ? 'bg-[#E5E0D8] text-[#A8A096]' : 'bg-[#8A9A5B] text-white shadow-sm'}`}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all relative z-20 flex items-center gap-1 ${isFollowing ? 'bg-[#E5E0D8] text-[#A8A096]' : 'bg-[#8A9A5B] text-white shadow-sm hover:bg-[#7A8A4B] shadow-[#8A9A5B]/20'}`}
                 >
+                  {isFollowing ? <CheckCircle2 className="w-3 h-3" /> : <Plus className="w-3 h-3" />}
                   {isFollowing ? 'Mengikuti' : 'Ikuti'}
                 </button>
               )}
@@ -799,7 +905,16 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
                     className="w-full text-sm text-[#A8A096] file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-[#8A9A5B] file:text-white hover:file:bg-[#7A8A4B]"
                   />
                   {editProfilePicture && (
-                    <p className="text-xs text-[#8A9A5B] mt-1">Gambar dipilih: {editProfilePicture.name}</p>
+                    <div className="mt-2 flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-[#8A9A5B]">
+                        <img 
+                          src={URL.createObjectURL(editProfilePicture)} 
+                          alt="Preview" 
+                          className="w-full h-full object-cover" 
+                        />
+                      </div>
+                      <p className="text-xs text-[#8A9A5B] font-bold">Pratinjau terpilih</p>
+                    </div>
                   )}
                 </div>
                 <textarea 
@@ -1490,7 +1605,19 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
   const [groupDetails, setGroupDetails] = useState<any | null>(null);
   const [messages, setMessages] = useState<any[]>([]);
   const [newMessageText, setNewMessageText] = useState('');
-  const [activeTab, setActiveTab] = useState<'chat' | 'members'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'materials' | 'assignments' | 'members'>('chat');
+  
+  // LMS State
+  const [materials, setMaterials] = useState<any[]>([]);
+  const [assignments, setAssignments] = useState<any[]>([]);
+  const [isAddingMaterial, setIsAddingMaterial] = useState(false);
+  const [isAddingAssignment, setIsAddingAssignment] = useState(false);
+  const [newMaterial, setNewMaterial] = useState({ title: '', description: '', content: '', type: 'document' });
+  const [newAssignment, setNewAssignment] = useState({ title: '', description: '', dueDate: '', points: 100 });
+  
+  const [selectedAssignment, setSelectedAssignment] = useState<any | null>(null);
+  const [submissions, setSubmissions] = useState<any[]>([]);
+  const [mySubmission, setMySubmission] = useState('');
 
   const fetchGroups = async () => {
     try {
@@ -1504,6 +1631,81 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
     } catch (e: any) {
       console.error(e);
     }
+  };
+
+  const fetchMaterials = async (groupId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/materials`);
+      const data = await res.json();
+      setMaterials(Array.isArray(data) ? data : []);
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchAssignments = async (groupId: string) => {
+    try {
+      const res = await fetch(`/api/groups/${groupId}/assignments`);
+      const data = await res.json();
+      setAssignments(Array.isArray(data) ? data : []);
+    } catch (e) { console.error(e); }
+  };
+
+  const handleCreateMaterial = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGroup) return;
+    try {
+      const res = await fetch(`/api/groups/${selectedGroup.id}/materials`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newMaterial, authorId: user.id })
+      });
+      if (res.ok) {
+        setIsAddingMaterial(false);
+        setNewMaterial({ title: '', description: '', content: '', type: 'document' });
+        fetchMaterials(selectedGroup.id);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleCreateAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGroup) return;
+    try {
+      const res = await fetch(`/api/groups/${selectedGroup.id}/assignments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...newAssignment, authorId: user.id })
+      });
+      if (res.ok) {
+        setIsAddingAssignment(false);
+        setNewAssignment({ title: '', description: '', dueDate: '', points: 100 });
+        fetchAssignments(selectedGroup.id);
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const handleSubmitAssignment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedAssignment) return;
+    try {
+      const res = await fetch(`/api/assignments/${selectedAssignment.id}/submit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, fullName: user.fullName, content: mySubmission })
+      });
+      if (res.ok) {
+        setSelectedAssignment(null);
+        setMySubmission('');
+        alert('Tugas berhasil dikirim!');
+      }
+    } catch (e) { console.error(e); }
+  };
+
+  const fetchSubmissions = async (assignmentId: string) => {
+    try {
+      const res = await fetch(`/api/assignments/${assignmentId}/submissions`);
+      const data = await res.json();
+      setSubmissions(Array.isArray(data) ? data : []);
+    } catch (e) { console.error(e); }
   };
 
   useEffect(() => {
@@ -1552,11 +1754,15 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
     if (selectedGroup) {
       fetchGroupDetails(selectedGroup.id);
       fetchMessages(selectedGroup.id);
+      fetchMaterials(selectedGroup.id);
+      fetchAssignments(selectedGroup.id);
       const interval = setInterval(() => fetchMessages(selectedGroup.id), 5000); // Poll for new messages
       return () => clearInterval(interval);
     } else {
       setGroupDetails(null);
       setMessages([]);
+      setMaterials([]);
+      setAssignments([]);
     }
   }, [selectedGroup]);
 
@@ -1734,19 +1940,25 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
           )}
 
           {(isMember || isAdmin) && (
-            <div className="flex gap-4 mb-6 border-b border-[#E5E0D8]">
-              <button 
-                onClick={() => setActiveTab('chat')}
-                className={`pb-3 font-bold px-2 ${activeTab === 'chat' ? 'text-[#8A9A5B] border-b-2 border-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'}`}
-              >
-                Diskusi
-              </button>
-              <button 
-                onClick={() => setActiveTab('members')}
-                className={`pb-3 font-bold px-2 ${activeTab === 'members' ? 'text-[#8A9A5B] border-b-2 border-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'}`}
-              >
-                Anggota
-              </button>
+            <div className="flex border-b border-[#E5E0D8] mb-6">
+              {[
+                { id: 'chat', label: 'Diskusi', icon: <MessageSquare size={16} /> },
+                { id: 'materials', label: 'Materi', icon: <FileText size={16} /> },
+                { id: 'assignments', label: 'Tugas', icon: <BookCheck size={16} /> },
+                { id: 'members', label: 'Anggota', icon: <Users size={16} /> }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex-1 py-3 text-sm font-bold flex items-center justify-center gap-2 transition-all relative ${
+                    activeTab === tab.id ? 'text-[#8A9A5B]' : 'text-[#A8A096] hover:text-[#4A4036]'
+                  }`}
+                >
+                  {tab.icon}
+                  {tab.label}
+                  {activeTab === tab.id && <motion.div layoutId="groupTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#8A9A5B]" />}
+                </button>
+              ))}
             </div>
           )}
 
@@ -1754,7 +1966,7 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
             <div className="bg-white rounded-2xl p-8 border border-[#E5E0D8] shadow-sm text-center">
               <Shield className="w-12 h-12 text-[#E5E0D8] mx-auto mb-3" />
               <h3 className="font-bold text-lg mb-2">Grup Terkunci</h3>
-              <p className="text-[#A8A096]">Anda harus bergabung dengan grup ini untuk melihat diskusi dan anggota.</p>
+              <p className="text-[#A8A096]">Anda harus bergabung dengan grup ini untuk melihat diskusi dan materi.</p>
             </div>
           ) : activeTab === 'chat' ? (
             <div className="bg-white rounded-2xl border border-[#E5E0D8] shadow-sm flex flex-col h-[500px]">
@@ -1791,6 +2003,53 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
                 </button>
               </form>
             </div>
+          ) : activeTab === 'materials' ? (
+            <div className="space-y-4">
+              {user.role === 'teacher' && (
+                <button 
+                  onClick={() => setIsAddingMaterial(true)}
+                  className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[#E5E0D8] rounded-2xl text-[#A8A096] hover:border-[#8A9A5B] hover:text-[#8A9A5B] transition-all font-bold text-sm"
+                >
+                  <Plus className="w-4 h-4" /> Tambah Materi Baru
+                </button>
+              )}
+              {materials.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-[#E5E0D8] text-[#A8A096]">
+                  <FileText className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">Belum ada materi pelajaran.</p>
+                </div>
+              ) : (
+                materials.map(mat => <LMSMaterial key={mat.id} material={mat} />)
+              )}
+            </div>
+          ) : activeTab === 'assignments' ? (
+            <div className="space-y-4">
+              {user.role === 'teacher' && (
+                <button 
+                  onClick={() => setIsAddingAssignment(true)}
+                  className="w-full flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[#E5E0D8] rounded-2xl text-[#A8A096] hover:border-[#8A9A5B] hover:text-[#8A9A5B] transition-all font-bold text-sm"
+                >
+                  <Plus className="w-4 h-4" /> Buat Penugasan Baru
+                </button>
+              )}
+              {assignments.length === 0 ? (
+                <div className="text-center py-12 bg-white rounded-2xl border border-[#E5E0D8] text-[#A8A096]">
+                  <BookCheck className="w-12 h-12 mx-auto mb-3 opacity-20" />
+                  <p className="text-sm">Belum ada tugas di grup ini.</p>
+                </div>
+              ) : (
+                assignments.map(asn => (
+                  <LMSAssignment 
+                    key={asn.id} 
+                    assignment={asn} 
+                    onOpen={() => {
+                      setSelectedAssignment(asn);
+                      if (user.role === 'teacher') fetchSubmissions(asn.id);
+                    }} 
+                  />
+                ))
+              )}
+            </div>
           ) : (
             <div className="bg-white rounded-2xl p-6 border border-[#E5E0D8] shadow-sm">
               <h3 className="font-bold text-lg mb-4">Anggota Grup</h3>
@@ -1825,7 +2084,7 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
                       <div>
                         <div className="font-bold flex items-center gap-2">
                           {m.user.fullName}
-                          {m.role === 'admin' && <span className="bg-[#8A9A5B] text-white text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider">Admin</span>}
+                          {m.role === 'teacher' && <span className="bg-[#8A9A5B] text-white text-[10px] px-1.5 py-0.5 rounded uppercase tracking-wider">Guru</span>}
                         </div>
                         <div className="text-xs text-[#A8A096]">@{m.user.username}</div>
                       </div>
@@ -1841,6 +2100,102 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
             </div>
           )}
         </main>
+
+        {/* LMS Modals */}
+        {isAddingMaterial && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+              <div className="p-6 bg-[#8A9A5B] text-white flex items-center justify-between">
+                <h3 className="font-bold text-lg">Tambah Materi</h3>
+                <button onClick={() => setIsAddingMaterial(false)}><X /></button>
+              </div>
+              <form onSubmit={handleCreateMaterial} className="p-6 space-y-4">
+                <input placeholder="Judul Materi" value={newMaterial.title} onChange={e => setNewMaterial({...newMaterial, title: e.target.value})} className="w-full p-3 border rounded-xl" required />
+                <textarea placeholder="Deskripsi Singkat" value={newMaterial.description} onChange={e => setNewMaterial({...newMaterial, description: e.target.value})} className="w-full p-3 border rounded-xl" rows={2} />
+                <select value={newMaterial.type} onChange={e => setNewMaterial({...newMaterial, type: e.target.value})} className="w-full p-3 border rounded-xl">
+                  <option value="document">Dokumen PDF/Teks</option>
+                  <option value="video">Video Pembelajaran</option>
+                  <option value="link">Link Eksternal</option>
+                </select>
+                <textarea placeholder="Konten atau URL" value={newMaterial.content} onChange={e => setNewMaterial({...newMaterial, content: e.target.value})} className="w-full p-3 border rounded-xl" rows={4} required />
+                <button type="submit" className="w-full py-3 bg-[#8A9A5B] text-white font-bold rounded-xl">Simpan Materi</button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {isAddingAssignment && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="bg-white rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
+              <div className="p-6 bg-orange-500 text-white flex items-center justify-between">
+                <h3 className="font-bold text-lg">Buat Penugasan</h3>
+                <button onClick={() => setIsAddingAssignment(false)}><X /></button>
+              </div>
+              <form onSubmit={handleCreateAssignment} className="p-6 space-y-4">
+                <input placeholder="Nama Tugas" value={newAssignment.title} onChange={e => setNewAssignment({...newAssignment, title: e.target.value})} className="w-full p-3 border rounded-xl" required />
+                <textarea placeholder="Instruksi Tugas" value={newAssignment.description} onChange={e => setNewAssignment({...newAssignment, description: e.target.value})} className="w-full p-3 border rounded-xl" rows={3} required />
+                <div>
+                  <label className="block text-xs font-bold text-[#A8A096] mb-1">Tenggat Waktu</label>
+                  <input type="date" value={newAssignment.dueDate} onChange={e => setNewAssignment({...newAssignment, dueDate: e.target.value})} className="w-full p-3 border rounded-xl" required />
+                </div>
+                <input type="number" placeholder="Poin Maksimal" value={newAssignment.points} onChange={e => setNewAssignment({...newAssignment, points: parseInt(e.target.value)})} className="w-full p-3 border rounded-xl" required />
+                <button type="submit" className="w-full py-3 bg-orange-500 text-white font-bold rounded-xl shadow-lg shadow-orange-200">Terbitkan Tugas</button>
+              </form>
+            </motion.div>
+          </div>
+        )}
+
+        {selectedAssignment && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+            <div className="bg-[#F4F1EA] rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl max-h-[90vh] flex flex-col">
+              <div className="p-6 bg-white border-b border-[#E5E0D8] flex items-center justify-between">
+                <div>
+                   <h3 className="font-bold text-xl text-[#4A4036]">{selectedAssignment.title}</h3>
+                   <span className="text-xs text-[#A8A096]">Batas: {new Date(selectedAssignment.due_date).toLocaleDateString()}</span>
+                </div>
+                <button onClick={() => setSelectedAssignment(null)} className="p-2 hover:bg-gray-100 rounded-full"><X /></button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 text-[#4A4036]">
+                <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] mb-6">
+                  <h4 className="font-bold text-sm mb-2 text-[#8A9A5B]">Instruksi:</h4>
+                  <p className="text-sm">{selectedAssignment.description}</p>
+                </div>
+
+                {user.role === 'teacher' ? (
+                  <div className="space-y-4">
+                    <h4 className="font-bold text-sm text-[#A8A096] uppercase tracking-wider">Submissions ({submissions.length})</h4>
+                    {submissions.length === 0 ? (
+                      <div className="py-8 text-center text-gray-400 italic text-sm">Belum ada pengumpulan.</div>
+                    ) : (
+                      submissions.map(sub => (
+                        <div key={sub.id} className="p-4 bg-white rounded-2xl border border-[#E5E0D8]">
+                          <div className="flex items-center justify-between mb-2">
+                             <span className="font-bold text-sm">{sub.user.fullName}</span>
+                             <span className="text-[10px] text-gray-400">{new Date(sub.created_at).toLocaleString()}</span>
+                          </div>
+                          <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg border border-gray-100">{sub.content}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmitAssignment} className="space-y-4">
+                    <h4 className="font-bold text-sm text-[#8A9A5B]">Kumpulkan Tugas:</h4>
+                    <textarea 
+                      placeholder="Tuliskan jawaban atau link tugasmu di sini..." 
+                      value={mySubmission} 
+                      onChange={e => setMySubmission(e.target.value)} 
+                      className="w-full p-4 border rounded-2xl bg-white focus:ring-2 focus:ring-[#8A9A5B] outline-none h-40" 
+                      required 
+                    />
+                    <button type="submit" className="w-full py-4 bg-[#8A9A5B] text-white font-bold rounded-2xl shadow-xl hover:scale-[1.02] transition-transform">Kirim Tugas Sekarang</button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -1950,7 +2305,19 @@ const GlobalSearch = ({
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{users: any[], posts: any[], groups: any[]}>({users: [], posts: [], groups: []});
   const [isOpen, setIsOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
+
+  // Environmental keywords to highlight
+  const ecoKeywords = useMemo(() => [
+    'pohon', 'hutan', 'sampah', 'limbah', 'energi', 'iklim', 'air', 'satwa', 'pertanian', 
+    'daur ulang', 'plastic', 'recycle', 'oksigen', 'carbon', 'reboisasi', 'global warming', 
+    'lingkungan', 'solar', 'panel', 'kompos', 'organik', 'eko', 'keanekaragaman'
+  ], []);
+
+  const hasEcoMatch = useMemo(() => {
+    return ecoKeywords.some(keyword => query.toLowerCase().includes(keyword.toLowerCase()));
+  }, [query, ecoKeywords]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1965,6 +2332,7 @@ const GlobalSearch = ({
   useEffect(() => {
     if (query.trim().length > 0) {
       const fetchResults = async () => {
+        setIsLoading(true);
         try {
           const res = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
           if (!res.ok) {
@@ -1976,6 +2344,8 @@ const GlobalSearch = ({
           setIsOpen(true);
         } catch (e: any) {
           console.error(e);
+        } finally {
+          setIsLoading(false);
         }
       };
       const timeoutId = setTimeout(fetchResults, 300);
@@ -1983,45 +2353,137 @@ const GlobalSearch = ({
     } else {
       setResults({users: [], posts: [], groups: []});
       setIsOpen(false);
+      setIsLoading(false);
     }
   }, [query]);
+
+  const highlightText = (text: string, highlight: string) => {
+    if (!highlight.trim()) return <span>{text}</span>;
+    
+    // Split query into terms
+    const queryTerms = highlight.split(/\s+/).filter(t => t.length > 1);
+    // Find relevant eco keywords that are in the text
+    const activeEcoTerms = ecoKeywords.filter(ek => text.toLowerCase().includes(ek.toLowerCase()));
+    
+    // Combine terms to highlight, avoid duplicates
+    const allTerms = [...new Set([...queryTerms.map(t => t.toLowerCase()), ...activeEcoTerms.map(t => t.toLowerCase())])];
+    
+    if (allTerms.length === 0) return <span>{text}</span>;
+    
+    // Sort terms by length (descending) to avoid partial matches replacing longer ones
+    allTerms.sort((a, b) => b.length - a.length);
+    
+    const pattern = new RegExp(`(${allTerms.map(t => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`, 'gi');
+    const parts = text.split(pattern);
+    
+    return (
+      <span>
+        {parts.map((part, i) => {
+          const lowerPart = part.toLowerCase();
+          const isEcoToken = activeEcoTerms.some(et => et.toLowerCase() === lowerPart);
+          const isQueryToken = queryTerms.some(qt => qt.toLowerCase() === lowerPart);
+          
+          if (isEcoToken || isQueryToken) {
+            return (
+              <mark 
+                key={i} 
+                className={`px-0.5 rounded font-bold transition-colors ${
+                  isEcoToken 
+                    ? 'bg-green-100 text-[#2D5A27] border-b-2 border-[#8A9A5B]/30' 
+                    : 'bg-yellow-100 text-[#4A4036] border-b-2 border-yellow-500/30'
+                }`}
+              >
+                {part}
+              </mark>
+            );
+          }
+          return <span key={i}>{part}</span>;
+        })}
+      </span>
+    );
+  };
 
   return (
     <div className="relative flex-1 max-w-sm mx-4" ref={searchRef}>
       <div className="relative">
         <input 
           type="text" 
-          placeholder="Cari orang, postingan, grup..." 
+          placeholder="Cari orang, postingan, atau isu lingkungan..." 
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => query.trim() && setIsOpen(true)}
-          className="w-full bg-white/20 text-white placeholder-white/70 px-4 py-1.5 pl-10 rounded-full outline-none focus:bg-white/30 transition-colors text-sm"
+          className={`w-full bg-white/20 text-white placeholder-white/70 px-4 py-1.5 pl-10 rounded-full outline-none transition-all text-sm ${hasEcoMatch ? 'ring-2 ring-[#8A9A5B] bg-white/30' : 'focus:bg-white/30'}`}
         />
-        <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-white/70" />
+        <div className="absolute left-3 top-1/2 transform -translate-y-1/2">
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 text-white/70 animate-spin" />
+          ) : hasEcoMatch ? (
+            <Leaf className="w-4 h-4 text-[#C9E78F] animate-pulse" />
+          ) : (
+            <Search className="w-4 h-4 text-white/70" />
+          )}
+        </div>
       </div>
 
       {isOpen && (
-        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-xl border border-[#E5E0D8] overflow-hidden z-[100] max-h-96 overflow-y-auto">
-          {results.users.length === 0 && results.posts.length === 0 && results.groups.length === 0 ? (
-            <div className="p-4 text-center text-sm text-[#A8A096]">Tidak ada hasil ditemukan</div>
+        <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-[#E5E0D8] overflow-hidden z-[100] max-h-[32rem] overflow-y-auto animate-in fade-in slide-in-from-top-2 duration-300">
+          {!query.trim() ? (
+            <div className="p-4">
+              <div className="text-xs font-bold text-[#8A9A5B] uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Sparkles size={12} /> Isu Lingkungan Populer
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {['Daur Ulang', 'Pemanasan Global', 'Hemat Energi', 'Konservasi Air', 'Zero Waste', 'Tanam Pohon'].map(tag => (
+                  <button 
+                    key={tag}
+                    onClick={() => setQuery(tag)}
+                    className="px-3 py-1.5 bg-[#F4F1EA] text-[#4A4036] text-xs rounded-full hover:bg-[#8A9A5B] hover:text-white transition-colors cursor-pointer border border-[#E5E0D8]"
+                  >
+                    {tag}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : results.users.length === 0 && results.posts.length === 0 && results.groups.length === 0 ? (
+            <div className="p-8 text-center text-sm text-[#A8A096]">
+              <Search className="w-8 h-8 mx-auto mb-2 opacity-20" />
+              Tidak ada hasil ditemukan
+            </div>
           ) : (
             <div className="py-2">
               {results.users.length > 0 && (
                 <div className="mb-2">
-                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider">Orang</div>
+                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider flex items-center justify-between">
+                    <span className="flex items-center gap-2"><User size={12} /> Orang</span>
+                    <span className="text-[10px] bg-[#E5E0D8] text-[#4A4036] px-1.5 py-0.5 rounded-full lowercase">{results.users.length} hasil</span>
+                  </div>
                   {results.users.map(u => (
                     <div 
                       key={u.id} 
                       onClick={() => { onUserSelect(u); setIsOpen(false); setQuery(''); }}
-                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer flex items-center gap-3"
+                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer flex items-center justify-between gap-3 transition-colors group"
                     >
-                      <div className="w-8 h-8 rounded-full bg-[#D2B48C] flex items-center justify-center text-white font-bold text-xs">
-                        {u.full_name?.charAt(0)?.toUpperCase() || '?'}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#D2B48C] overflow-hidden relative shadow-inner flex items-center justify-center text-white font-bold text-sm group-hover:scale-105 transition-transform">
+                          {u.profile_picture_url ? (
+                            <img src={u.profile_picture_url} alt={u.username} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                          ) : (
+                            u.full_name?.charAt(0)?.toUpperCase() || '?'
+                          )}
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-[#4A4036] group-hover:text-[#8A9A5B] flex items-center gap-2">
+                            {highlightText(u.full_name, query)}
+                            {u.xp > 1000 && <Trophy size={12} className="text-[#D4AF37]" />}
+                          </div>
+                          <div className="text-xs text-[#A8A096]">@{u.username} • {u.xp} XP</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="text-sm font-bold text-[#4A4036]">{u.full_name}</div>
-                        <div className="text-xs text-[#A8A096]">@{u.username}</div>
-                      </div>
+                      {u.relevance > 10 && (
+                        <div className="bg-[#8A9A5B]/10 text-[#8A9A5B] text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                          <Leaf size={10} /> Eco Match
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2029,15 +2491,26 @@ const GlobalSearch = ({
 
               {results.groups.length > 0 && (
                 <div className="mb-2">
-                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider">Grup</div>
+                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider flex items-center justify-between">
+                    <span className="flex items-center gap-2"><Users size={12} /> Grup</span>
+                  </div>
                   {results.groups.map(g => (
                     <div 
                       key={g.id} 
                       onClick={() => { onGroupSelect(g.id); setIsOpen(false); setQuery(''); }}
-                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer"
+                      className="px-4 py-3 hover:bg-[#F4F1EA] cursor-pointer transition-colors group"
                     >
-                      <div className="text-sm font-bold text-[#4A4036]">{g.name}</div>
-                      <div className="text-xs text-[#A8A096] truncate">{g.description}</div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm font-bold text-[#4A4036] group-hover:text-[#8A9A5B]">
+                          {highlightText(g.name, query)}
+                        </div>
+                        {g.relevance > 10 && (
+                          <div className="bg-[#8A9A5B]/10 text-[#8A9A5B] text-[10px] px-2 py-0.5 rounded-full font-bold">
+                            Eco Community
+                          </div>
+                        )}
+                      </div>
+                      <div className="text-xs text-[#A8A096] mt-1 line-clamp-1">{g.description}</div>
                     </div>
                   ))}
                 </div>
@@ -2045,15 +2518,34 @@ const GlobalSearch = ({
 
               {results.posts.length > 0 && (
                 <div>
-                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider">Postingan</div>
+                  <div className="px-4 py-1 text-xs font-bold text-[#8A9A5B] uppercase tracking-wider flex items-center justify-between border-t border-[#F4F1EA] mt-1 pt-2">
+                    <span className="flex items-center gap-2"><FileText size={12} /> Postingan</span>
+                  </div>
                   {results.posts.map(p => (
                     <div 
                       key={p.id} 
                       onClick={() => { onPostSelect(p.id); setIsOpen(false); setQuery(''); }}
-                      className="px-4 py-2 hover:bg-[#F4F1EA] cursor-pointer"
+                      className="px-4 py-3 hover:bg-[#F4F1EA] cursor-pointer transition-colors group flex gap-3"
                     >
-                      <div className="text-xs font-bold text-[#A8A096] mb-0.5">{p.user?.full_name}</div>
-                      <div className="text-sm text-[#4A4036] line-clamp-2">{p.content}</div>
+                      {p.image_url && (
+                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-[#E5E0D8]">
+                          <img src={p.image_url} alt="post" className="w-full h-full object-cover group-hover:scale-110 transition-transform" referrerPolicy="no-referrer" />
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between mb-1">
+                          <div className="text-xs font-bold text-[#A8A096] truncate">@{p.user?.username || 'user'}</div>
+                          {p.is_scientific && <Sparkles size={10} className="text-[#8A9A5B]" />}
+                        </div>
+                        <div className="text-sm text-[#4A4036] line-clamp-2 group-hover:text-[#8A9A5B]">
+                          {highlightText(p.content, query)}
+                        </div>
+                        {p.relevance > 10 && (
+                          <div className="mt-1 inline-flex items-center gap-1 text-[10px] text-[#8A9A5B] font-bold">
+                            <CheckCircle2 size={10} /> Eco-Relevant
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -2336,6 +2828,30 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [selectedPostForReport, setSelectedPostForReport] = useState<Post | null>(null);
   
+  // App-level UI states
+  const [isLeaderboardOpen, setIsLeaderboardOpen] = useState(false);
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+
+  useEffect(() => {
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    });
+  }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') setDeferredPrompt(null);
+    } catch (e) {
+      console.error('Install prompt failed:', e);
+      setDeferredPrompt(null);
+    }
+  };
+
   // Carbon Receipt State
   const [receiptData, setReceiptData] = useState<{isOpen: boolean, xp: number, title: string}>({isOpen: false, xp: 0, title: ''});
 
@@ -2826,13 +3342,17 @@ export default function App() {
                       <select
                         value={subbab}
                         onChange={(e) => setSubbab(e.target.value as Subbab)}
-                        className="w-full sm:w-auto text-sm bg-[#F4F1EA] border border-[#E5E0D8] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] text-[#4A4036] font-medium"
+                        className="w-full sm:w-auto text-sm bg-[#F4F1EA] border border-[#E5E0D8] rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#8A9A5B] text-[#4A4036] font-medium transition-all"
                       >
                         <option value="Kesehatan Lingkungan">Kesehatan Lingkungan</option>
-                    <option value="Pemanasan Global">Pemanasan Global</option>
-                    <option value="Krisis Energi">Krisis Energi</option>
-                    <option value="Ketahanan Pangan">Ketahanan Pangan</option>
-                  </select>
+                        <option value="Pemanasan Global">Pemanasan Global</option>
+                        <option value="Krisis Energi">Krisis Energi</option>
+                        <option value="Ketahanan Pangan">Ketahanan Pangan</option>
+                        <option value="Keanekaragaman Hayati">Keanekaragaman Hayati</option>
+                        <option value="Konservasi Air">Konservasi Air</option>
+                        <option value="Pengolahan Limbah">Pengolahan Limbah</option>
+                        <option value="Ekosistem Laut">Ekosistem Laut</option>
+                      </select>
                 </div>
               </div>
               
@@ -3051,7 +3571,7 @@ export default function App() {
                                     onClick={() => {
                                       setEditingPost(post);
                                       setEditCaption(post.caption);
-                                      setEditSubbab(post.subbab);
+                                      setEditSubbab(post.subbab as any);
                                       setActiveDropdown(null);
                                     }}
                                     className="w-full text-left px-4 py-2 text-sm hover:bg-[#F4F1EA] flex items-center gap-2 text-[#4A4A4A]"
@@ -3085,6 +3605,12 @@ export default function App() {
                       <div className="prose prose-sm prose-stone max-w-none mb-4 prose-p:leading-relaxed prose-a:text-[#8A9A5B]">
                         <ReactMarkdown>{post.caption}</ReactMarkdown>
                       </div>
+
+                      {post.locationLat && post.locationLng && (
+                        <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8]">
+                          <PostMap lat={post.locationLat} lng={post.locationLng} caption={post.caption} />
+                        </div>
+                      )}
 
                       {post.isMission && (
                         <div className="mb-4 p-4 bg-[#8A9A5B]/5 rounded-2xl border border-[#8A9A5B]/20 flex items-center justify-between">
@@ -3434,6 +3960,215 @@ export default function App() {
         onClose={() => setIsLevelUpOpen(false)} 
       />
       <BangEko />
+
+      {/* Modern Floating Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-md border-t border-[#E5E0D8] z-[60] flex items-center justify-around h-20 md:hidden px-4 pb-4">
+        <button onClick={() => setView('feed')} className={`flex flex-col items-center gap-1 transition-all ${view === 'feed' ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <Home className={`w-6 h-6 ${view === 'feed' ? 'fill-[#8A9A5B]' : ''}`} />
+          <span className="text-[10px] font-bold">Feed</span>
+        </button>
+        <button onClick={() => setView('groups')} className={`flex flex-col items-center gap-1 transition-all ${(view as string) === 'groups' ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <Users className={`w-6 h-6 ${(view as string) === 'groups' ? 'fill-current' : ''}`} />
+          <span className="text-[10px] font-bold">Grup</span>
+        </button>
+        <button 
+          onClick={() => setIsPostModalOpen(true)} 
+          className="w-14 h-14 bg-[#8A9A5B] rounded-2xl flex items-center justify-center shadow-lg shadow-[#8A9A5B]/30 -translate-y-8 border-4 border-[#F4F1EA] text-white active:scale-90 transition-transform"
+        >
+          <Plus className="w-8 h-8" />
+        </button>
+        <button onClick={() => setIsLeaderboardOpen(true)} className={`flex flex-col items-center gap-1 transition-all ${isLeaderboardOpen ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <Trophy className={`w-6 h-6 ${isLeaderboardOpen ? 'fill-current text-yellow-500' : ''}`} />
+          <span className="text-[10px] font-bold">Juara</span>
+        </button>
+        <button onClick={() => { setView('profile'); setSelectedUserForProfile(null); }} className={`flex flex-col items-center gap-1 transition-all ${(view as string) === 'profile' && !selectedUserForProfile ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`}>
+          <User className={`w-6 h-6 ${(view as string) === 'profile' && !selectedUserForProfile ? 'fill-current' : ''}`} />
+          <span className="text-[10px] font-bold">Profil</span>
+        </button>
+      </nav>
+
+      {/* Floating Install Prompt */}
+      {deferredPrompt && (
+        <div className="fixed top-4 right-4 z-[110] animate-in bounce-in slide-in-from-top duration-500 pointer-events-none">
+          <button 
+            onClick={handleInstallClick}
+            className="bg-[#8A9A5B] text-white px-4 py-3 rounded-2xl shadow-2xl border-2 border-white font-bold flex items-center gap-2 hover:scale-105 active:scale-95 transition-all pointer-events-auto"
+          >
+            <Download className="w-5 h-5" /> 
+            <div className="flex flex-col items-start leading-tight">
+              <span className="text-xs">Install EduGram</span>
+              <span className="text-[8px] opacity-80 whitespace-nowrap text-left italic">Aksi Nyata untuk Bumi</span>
+            </div>
+          </button>
+        </div>
+      )}
+
+      {/* Mobile Leaderboard Drawer */}
+      {isLeaderboardOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-end justify-center md:hidden">
+          <motion.div 
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            className="bg-[#F4F1EA] w-full max-h-[85vh] rounded-t-[3rem] overflow-hidden shadow-2xl flex flex-col border-t-2 border-[#8A9A5B]"
+          >
+            <div className="w-12 h-1.5 bg-[#E5E0D8] rounded-full mx-auto mt-4 mb-2" />
+            <div className="p-6 pb-2 flex items-center justify-between">
+              <h3 className="font-black text-2xl flex items-center gap-2 text-[#4A4036]">
+                <Trophy className="w-8 h-8 text-yellow-500" /> Lead Eco-Board
+              </h3>
+              <button 
+                onClick={() => setIsLeaderboardOpen(false)} 
+                className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 transition-colors"
+              >
+                <X className="w-6 h-6 text-[#A8A096]" />
+              </button>
+            </div>
+            
+            <div className="px-6 py-2 flex gap-4 overflow-x-auto no-scrollbar">
+              <div className="bg-[#8A9A5B] text-white px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap">Semua</div>
+              <div className="bg-white text-[#A8A096] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border border-[#E5E0D8]">Kesehatan</div>
+              <div className="bg-white text-[#A8A096] px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap border border-[#E5E0D8]">Energi</div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 pt-2">
+              <div className="space-y-4">
+                {leaderboard.map((user, index) => (
+                  <div 
+                    key={user.id} 
+                    onClick={() => {
+                      setSelectedUserForProfile({ id: user.id, fullName: user.name, className: user.className } as any);
+                      setView('profile');
+                      setIsLeaderboardOpen(false);
+                    }}
+                    className="flex items-center gap-4 p-4 rounded-3xl bg-white border border-[#E5E0D8] shadow-sm active:scale-95 transition-transform"
+                  >
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center font-black text-xl shrink-0
+                      ${index === 0 ? 'bg-yellow-400 text-white shadow-lg shadow-yellow-200' : 
+                        index === 1 ? 'bg-slate-300 text-white shadow-lg shadow-slate-200' : 
+                        index === 2 ? 'bg-orange-400 text-white shadow-lg shadow-orange-200' :
+                        'bg-[#F4F1EA] text-[#A8A096]'}`}
+                    >
+                      {index + 1}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-bold text-lg truncate text-[#4A4036]">{user.name}</div>
+                      <div className="text-xs text-[#A8A096] flex items-center gap-2">
+                        <span className="font-bold text-[#8A9A5B]">Level {Math.floor(user.xp/100) + 1}</span>
+                        <span>•</span>
+                        <span>{user.className || 'Umum'}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <div className="text-lg font-black text-[#8A9A5B]">{user.xp}</div>
+                      <div className="text-[10px] font-bold text-[#A8A096] uppercase tracking-tighter">XP POIN</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
+      {/* Post Modal */}
+      <AnimatePresence>
+        {isPostModalOpen && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setIsPostModalOpen(false)}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.9, opacity: 0, y: 20 }}
+              className="bg-[#F4F1EA] w-full max-w-lg rounded-3xl overflow-hidden shadow-2xl relative z-10 border border-[#E5E0D8]"
+            >
+              <div className="p-4 border-b border-[#E5E0D8] bg-white flex items-center justify-between">
+                <h2 className="text-lg font-bold text-[#4A4036] flex items-center gap-2">
+                  <PlusSquare className="w-5 h-5 text-[#8A9A5B]" /> Buat Postingan Baru
+                </h2>
+                <button 
+                  onClick={() => setIsPostModalOpen(false)}
+                  className="p-2 hover:bg-[#F4F1EA] rounded-full transition-colors"
+                >
+                  <X size={20} className="text-[#A8A096]" />
+                </button>
+              </div>
+              
+              <div className="p-6 max-h-[80vh] overflow-y-auto">
+                <form onSubmit={(e) => { handlePost(e); setIsPostModalOpen(false); }} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-[#A8A096] uppercase tracking-wider mb-2">Tema Lingkungan</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {['Kesehatan Lingkungan', 'Pemanasan Global', 'Krisis Energi', 'Ketahanan Pangan', 'Keanekaragaman Hayati', 'Konservasi Air', 'Pengolahan Limbah', 'Ekosistem Laut'].map((theme) => (
+                        <button
+                          key={theme}
+                          type="button"
+                          onClick={() => setSubbab(theme as Subbab)}
+                          className={`px-3 py-2 text-xs rounded-xl border transition-all text-left flex items-center gap-2 ${subbab === theme ? 'bg-[#8A9A5B] border-[#8A9A5B] text-white shadow-lg shadow-[#8A9A5B]/20' : 'bg-white border-[#E5E0D8] text-[#4A4036] hover:border-[#8A9A5B]'}`}
+                        >
+                          <div className={`w-2 h-2 rounded-full ${SUBBAB_COLORS[theme as Subbab]}`} />
+                          {theme}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#A8A096] uppercase tracking-wider mb-2">Cerita/Caption</label>
+                    <textarea 
+                      value={caption}
+                      onChange={(e) => setCaption(e.target.value)}
+                      placeholder="Apa kontribusi lingkunganmu hari ini?"
+                      className="w-full bg-white border border-[#E5E0D8] rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-[#8A9A5B]/20 transition-all text-sm min-h-[120px] resize-none"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-[#A8A096] uppercase tracking-wider mb-2">Foto Aksi Nyata (URL)</label>
+                    <input 
+                      type="text" 
+                      value={imageUrl}
+                      onChange={(e) => setImageUrl(e.target.value)}
+                      placeholder="Tempel URL gambar di sini"
+                      className="w-full bg-white border border-[#E5E0D8] rounded-xl px-4 py-2 text-sm outline-none focus:border-[#8A9A5B]"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 bg-white rounded-2xl border border-[#E5E0D8]">
+                    <div className="flex items-center gap-3 text-[#4A4036]">
+                      <MapPin className={`w-5 h-5 ${isLocationEnabled ? 'text-[#8A9A5B]' : 'text-[#A8A096]'}`} />
+                      <div>
+                        <p className="text-xs font-bold">Bagikan Lokasi</p>
+                        <p className="text-[10px] text-[#A8A096]">Petakan aksi penghijauanmu</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsLocationEnabled(!isLocationEnabled)}
+                      className={`w-12 h-6 rounded-full transition-colors relative ${isLocationEnabled ? 'bg-[#8A9A5B]' : 'bg-[#E5E0D8]'}`}
+                    >
+                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-all ${isLocationEnabled ? 'right-1' : 'left-1'}`} />
+                    </button>
+                  </div>
+
+                  <button 
+                    type="submit" 
+                    className="w-full bg-[#8A9A5B] text-white py-4 rounded-2xl font-bold shadow-lg shadow-[#8A9A5B]/20 hover:bg-[#7A8A4B] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+                  >
+                    <Send size={18} /> Bagikan Aksi Nyata
+                  </button>
+                </form>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

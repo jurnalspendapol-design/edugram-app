@@ -30,4 +30,8 @@ export const SUBBAB_COLORS: Record<Subbab, string> = {
   'Pemanasan Global': 'bg-red-100 text-red-800 border-red-200',
   'Krisis Energi': 'bg-amber-100 text-amber-800 border-amber-200',
   'Ketahanan Pangan': 'bg-green-100 text-green-800 border-green-200',
+  'Keanekaragaman Hayati': 'bg-emerald-100 text-emerald-800 border-emerald-200',
+  'Konservasi Air': 'bg-blue-100 text-blue-800 border-blue-200',
+  'Pengolahan Limbah': 'bg-orange-100 text-orange-800 border-orange-200',
+  'Ekosistem Laut': 'bg-indigo-100 text-indigo-800 border-indigo-200',
 };

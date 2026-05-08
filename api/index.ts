@@ -768,12 +768,21 @@ app.post("/api/users/:id/profile", async (req, res) => {
     const { bio, profilePictureUrl } = req.body;
     const userId = req.params.id;
 
+    // Detect columns to avoid "column does not exist" errors
+    const { data: sampleUser } = await supabase.from('users').select('*').limit(1);
+    const userCols = sampleUser && sampleUser.length > 0 ? Object.keys(sampleUser[0]) : ['bio', 'profile_picture_url'];
+    
+    const updateData: any = {};
+    if (userCols.includes('bio')) updateData.bio = bio || "";
+    if (userCols.includes('biografi')) updateData.biografi = bio || "";
+    
+    if (userCols.includes('profile_picture_url')) updateData.profile_picture_url = profilePictureUrl || "";
+    if (userCols.includes('profilepictureurl')) updateData.profilepictureurl = profilePictureUrl || "";
+    if (userCols.includes('avatar_url')) updateData.avatar_url = profilePictureUrl || "";
+
     const { error } = await supabase
       .from('users')
-      .update({ 
-        bio: bio || "",
-        profile_picture_url: profilePictureUrl || ""
-      })
+      .update(updateData)
       .eq('id', userId);
 
     if (error) {
@@ -842,9 +851,20 @@ app.post("/api/users/:id/follow", async (req, res) => {
 });
 
 // --- Groups Logic (In-Memory Fallback) ---
+const fallbackUsers: Record<string, any> = {
+  'demo-user': { id: 'demo-user', username: 'ekosatria', full_name: 'Eko Satria', role: 'student', bio: 'Pecinta lingkungan dari Jakarta' },
+  'demo-teacher': { id: 'demo-teacher', username: 'guru_hijau', full_name: 'Ibu Pertiwi', role: 'teacher', bio: 'Mengajar biologi dan peduli bumi' }
+};
+const fallbackPosts: any[] = [
+  { id: 'p1', author_id: 'demo-user', caption: 'Mari kita menanam pohon untuk masa depan yang lebih hijau! #pohon #oksigen', subbab: 'Keanekaragaman Hayati', created_at: new Date().toISOString() },
+  { id: 'p2', author_id: 'demo-teacher', caption: 'Tahukah kamu sampah plastik bisa didaur ulang menjadi kerajinan? #sampah #daurulang', subbab: 'Pengolahan Limbah', created_at: new Date().toISOString() }
+];
 const fallbackGroups: Record<string, any> = {};
 const fallbackGroupMembers: Record<string, any[]> = {}; // groupId -> array of { userId, role: 'admin'|'member', status: 'approved'|'pending', user: { fullName, username } }
 const fallbackGroupMessages: Record<string, any[]> = {}; // groupId -> array of messages
+const fallbackGroupMaterials: Record<string, any[]> = {}; // groupId -> array of materials
+const fallbackGroupAssignments: Record<string, any[]> = {}; // groupId -> array of assignments
+const fallbackAssignmentSubmissions: Record<string, any[]> = {}; // assignmentId -> array of submissions
 
 app.get("/api/groups/:id/messages", async (req, res) => {
   try {
@@ -853,6 +873,124 @@ app.get("/api/groups/:id/messages", async (req, res) => {
     res.json(messages);
   } catch (error: any) {
     console.error("[Get Group Messages Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// LMS: Materials
+app.get("/api/groups/:id/materials", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const materials = fallbackGroupMaterials[groupId] || [];
+    res.json(materials);
+  } catch (error: any) {
+    console.error("[Get Group Materials Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/groups/:id/materials", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const { title, description, content, authorId, type } = req.body;
+    
+    if (!fallbackGroupMaterials[groupId]) fallbackGroupMaterials[groupId] = [];
+    
+    const newMaterial = {
+      id: 'mat_' + Date.now().toString(),
+      group_id: groupId,
+      title,
+      description,
+      content,
+      author_id: authorId,
+      type: type || 'document', // 'document' | 'video' | 'link'
+      created_at: new Date().toISOString()
+    };
+    
+    fallbackGroupMaterials[groupId].unshift(newMaterial);
+    res.json({ success: true, material: newMaterial });
+  } catch (error: any) {
+    console.error("[Create Group Material Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// LMS: Assignments
+app.get("/api/groups/:id/assignments", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const assignments = fallbackGroupAssignments[groupId] || [];
+    res.json(assignments);
+  } catch (error: any) {
+    console.error("[Get Group Assignments Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/groups/:id/assignments", async (req, res) => {
+  try {
+    const groupId = req.params.id;
+    const { title, description, dueDate, authorId, points } = req.body;
+    
+    if (!fallbackGroupAssignments[groupId]) fallbackGroupAssignments[groupId] = [];
+    
+    const newAssignment = {
+      id: 'asn_' + Date.now().toString(),
+      group_id: groupId,
+      title,
+      description,
+      due_date: dueDate,
+      author_id: authorId,
+      points: points || 100,
+      created_at: new Date().toISOString()
+    };
+    
+    fallbackGroupAssignments[groupId].unshift(newAssignment);
+    res.json({ success: true, assignment: newAssignment });
+  } catch (error: any) {
+    console.error("[Create Group Assignment Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/assignments/:id/submissions", async (req, res) => {
+  try {
+    const assignmentId = req.params.id;
+    const submissions = fallbackAssignmentSubmissions[assignmentId] || [];
+    res.json(submissions);
+  } catch (error: any) {
+    console.error("[Get Submissions Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post("/api/assignments/:id/submit", async (req, res) => {
+  try {
+    const assignmentId = req.params.id;
+    const { userId, fullName, content } = req.body;
+    
+    if (!fallbackAssignmentSubmissions[assignmentId]) fallbackAssignmentSubmissions[assignmentId] = [];
+    
+    const newSubmission = {
+      id: 'sub_' + Date.now().toString(),
+      assignment_id: assignmentId,
+      user_id: userId,
+      user: { fullName },
+      content,
+      created_at: new Date().toISOString()
+    };
+    
+    // Check if user already submitted
+    const index = fallbackAssignmentSubmissions[assignmentId].findIndex(s => s.user_id === userId);
+    if (index !== -1) {
+      fallbackAssignmentSubmissions[assignmentId][index] = newSubmission;
+    } else {
+      fallbackAssignmentSubmissions[assignmentId].push(newSubmission);
+    }
+    
+    res.json({ success: true, submission: newSubmission });
+  } catch (error: any) {
+    console.error("[Submit Assignment Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1683,69 +1821,191 @@ app.get("/api/search", async (req, res) => {
 
     const supabase = getSupabase();
     const query = q.toLowerCase();
+    const queryTerms = query.split(/\s+/).filter(t => t.length > 1);
 
-    // Search users
-    // We search across multiple possible name columns and username
-    const { data: sampleUser } = await supabase.from('users').select('*').limit(1);
-    const userCols = sampleUser && sampleUser.length > 0 ? Object.keys(sampleUser[0]) : ['full_name', 'username'];
-    
-    const selectUserCols = ['id', 'username', 'profile_picture_url', 'role'];
-    if (userCols.includes('full_name')) selectUserCols.push('full_name');
-    if (userCols.includes('fullname')) selectUserCols.push('fullname');
-    if (userCols.includes('name')) selectUserCols.push('name');
-    if (userCols.includes('nama')) selectUserCols.push('nama');
+    // Comprehensive environmental keywords
+    const ecoKeywords: Record<string, string[]> = {
+      'pohon': ['hutan', 'penghijauan', 'oksigen', 'tanaman', 'bibit', 'reboisasi', 'manggrove', 'bakau', 'rindang'],
+      'sampah': ['limbah', 'daur ulang', 'plastik', 'organik', 'anorganik', 'kompos', 'pilah', 'reduce', 'reuse', 'recycle', 'tpa', 'bank sampah'],
+      'energi': ['listrik', 'panel surya', 'biogas', 'hemat', 'solar', 'angin', 'plta', 'plts', 'watt'],
+      'air': ['konservasi', 'sungai', 'laut', 'bersih', 'sanitasi', 'danau', 'mata air', 'hujan', 'pencemaran'],
+      'iklim': ['pemanasan global', 'emisi', 'karbon', 'cuaca', 'atmosfer', 'efek rumah kaca', 'metana', 'co2'],
+      'satwa': ['hewan', 'fauna', 'flora', 'ekosistem', 'habitat', 'langka', 'konservasi', 'biodiversitas'],
+      'pertanian': ['pangan', 'sawah', 'kebun', 'hidroponik', 'organik', 'pupuk', 'panen', 'ketahanan pangan']
+    };
 
-    let userQuery = supabase.from('users').select(selectUserCols.join(','));
-    
-    const escapedQ = q.replace(/,/g, '\\,');
-    const nameCols = ['full_name', 'fullname', 'name', 'nama', 'username'].filter(c => userCols.includes(c));
-    
-    // If multiple words, we try to match the whole string first
-    let orConditions = nameCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
-    
-    const { data: users } = await userQuery.or(orConditions).limit(10);
+    // Related terms specifically for environmental search
+    const environmentalTerms = new Set<string>();
+    for (const [key, terms] of Object.entries(ecoKeywords)) {
+      if (query.includes(key) || terms.some(t => query.includes(t))) {
+        environmentalTerms.add(key);
+        terms.forEach(t => environmentalTerms.add(t));
+      }
+    }
 
-    // Search posts
-    const { data: samplePost } = await supabase.from('posts').select('*').limit(1);
-    const postCols = samplePost && samplePost.length > 0 ? Object.keys(samplePost[0]) : ['caption'];
-    
-    const selectPostCols = ['id', 'author_id'];
-    if (postCols.includes('caption')) selectPostCols.push('caption');
-    if (postCols.includes('content')) selectPostCols.push('content');
-    if (postCols.includes('text')) selectPostCols.push('text');
-    
-    let postQuery = supabase
-      .from('posts')
-      .select(`${selectPostCols.join(',')}, user:users(*)`);
-    
-    const captionCols = ['caption', 'content', 'text'].filter(c => postCols.includes(c));
-    const postOrConditions = captionCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
-    
-    const { data: posts } = await postQuery.or(postOrConditions).limit(10);
+    // Helper for relevance scoring
+    const calculateRelevance = (text: string = "", terms: string[] = []): number => {
+      if (!text) return 0;
+      const lowerText = text.toLowerCase();
+      let score = 0;
+      
+      // Match query terms
+      terms.forEach(term => {
+        if (lowerText.includes(term)) {
+          score += 10;
+          // Exact match bonus
+          if (lowerText.includes(` ${term} `) || lowerText.startsWith(`${term} `) || lowerText.endsWith(` ${term}`)) score += 5;
+        }
+      });
 
-    // Search groups (in-memory)
-    const groups = Object.values(fallbackGroups).filter(g => 
+      // Environmental relevance bonus
+      environmentalTerms.forEach(term => {
+        if (lowerText.includes(term)) {
+          score += 5;
+        }
+      });
+
+      return score;
+    };
+
+    // --- Search Users ---
+    let finalUsers: any[] = [];
+    try {
+      const { data: sampleUser } = await supabase.from('users').select('*').limit(1);
+      const userCols = sampleUser && sampleUser.length > 0 ? Object.keys(sampleUser[0]) : ['full_name', 'username', 'bio'];
+      
+      const selectUserCols = ['id', 'username', 'profile_picture_url', 'role', 'xp'];
+      ['full_name', 'fullname', 'name', 'nama', 'bio', 'class_name', 'school_name'].forEach(col => {
+        if (userCols.includes(col)) selectUserCols.push(col);
+      });
+
+      let userQueryBuilder = supabase.from('users').select(selectUserCols.join(','));
+      const escapedQ = q.replace(/,/g, '\\,');
+      const searchCols = ['full_name', 'fullname', 'name', 'nama', 'username', 'bio'].filter(c => userCols.includes(c));
+      let orConditions = searchCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
+      
+      const { data: dbUsers } = await userQueryBuilder.or(orConditions).limit(20);
+      finalUsers = dbUsers || [];
+    } catch (e) {
+      console.warn("Supabase user search failed, using fallbacks");
+    }
+
+    // Mix with fallback if needed or empty
+    if (finalUsers.length < 5) {
+      const fbUsers = Object.values(fallbackUsers).filter(u => 
+        u.username.toLowerCase().includes(query) || 
+        (u.full_name && u.full_name.toLowerCase().includes(query)) ||
+        (u.bio && u.bio.toLowerCase().includes(query))
+      );
+      finalUsers = [...finalUsers, ...fbUsers];
+    }
+    
+    // Deduplicate and Sort Users by relevance and XP
+    const userMap = new Map();
+    finalUsers.forEach(u => userMap.set(u.id || u.username, u));
+    finalUsers = Array.from(userMap.values())
+      .map(u => ({
+        ...u,
+        full_name: u.full_name || u.fullname || u.name || u.nama || u.username,
+        relevance: calculateRelevance(`${u.username} ${u.full_name || ''} ${u.bio || ''}`, [query, ...queryTerms])
+      }))
+      .sort((a, b) => (b.relevance + (b.xp || 0) / 100) - (a.relevance + (a.xp || 0) / 100))
+      .slice(0, 15);
+
+    // --- Search Posts ---
+    let finalPosts: any[] = [];
+    try {
+      const { data: samplePost } = await supabase.from('posts').select('*').limit(1);
+      const postCols = samplePost && samplePost.length > 0 ? Object.keys(samplePost[0]) : ['caption', 'subbab'];
+      
+      const selectPostCols = ['id', 'author_id', 'created_at', 'image_url', 'is_scientific', 'insightful', 'ask', 'support'];
+      ['caption', 'content', 'text', 'subbab'].forEach(col => {
+        if (postCols.includes(col)) selectPostCols.push(col);
+      });
+      
+      let userSelect = "user:users(*)";
+      try {
+        const { data: relTest } = await supabase.from('posts').select('author_id(*)').limit(1);
+        if (relTest) userSelect = "user:author_id(*)";
+      } catch (e) {}
+
+      let postQuery = supabase.from('posts').select(`${selectPostCols.join(',')}, ${userSelect}`);
+      const captionCols = ['caption', 'content', 'text', 'subbab'].filter(c => postCols.includes(c));
+      const escapedQ = q.replace(/,/g, '\\,');
+      const postOrConditions = captionCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
+      
+      const { data: dbPosts } = await postQuery.or(postOrConditions).order('created_at', { ascending: false }).limit(20);
+      finalPosts = dbPosts || [];
+    } catch (e) {
+      console.warn("Supabase post search failed, using fallbacks");
+    }
+
+    if (finalPosts.length < 5) {
+      const fbPosts = fallbackPosts.filter(p => 
+        p.caption.toLowerCase().includes(query) ||
+        (p.subbab && p.subbab.toLowerCase().includes(query))
+      ).map(p => ({
+        ...p,
+        user: fallbackUsers[p.author_id] || null
+      }));
+      finalPosts = [...finalPosts, ...fbPosts];
+    }
+
+    // Deduplicate and Sort Posts: Relevance (query + eco keywords) > Recency > Scientific
+    const postMap = new Map();
+    finalPosts.forEach(p => postMap.set(p.id, p));
+    finalPosts = Array.from(postMap.values())
+      .map(p => ({
+        ...p,
+        content: p.caption || p.content || p.text,
+        relevance: calculateRelevance(`${p.caption || ''} ${p.subbab || ''}`, [query, ...queryTerms]) + (p.is_scientific ? 5 : 0)
+      }))
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, 15);
+
+    // --- Search Groups ---
+    let finalGroups: any[] = [];
+    try {
+      const { data: dbGroups } = await supabase
+        .from('groups')
+        .select('*')
+        .or(`name.ilike.%${q}%,description.ilike.%${q}%`)
+        .limit(10);
+      finalGroups = dbGroups || [];
+    } catch (e) {
+      // Ignore if table doesn't exist
+    }
+
+    const fbGroupsFiltered = Object.values(fallbackGroups).filter(g => 
       g.name.toLowerCase().includes(query) || 
       g.description.toLowerCase().includes(query)
-    ).slice(0, 10);
+    );
+    finalGroups = [...finalGroups, ...fbGroupsFiltered];
+
+    // Deduplicate and Sort Groups
+    const groupMap = new Map();
+    finalGroups.forEach(g => groupMap.set(g.id, g));
+    finalGroups = Array.from(groupMap.values())
+      .map(g => ({
+        ...g,
+        relevance: calculateRelevance(`${g.name} ${g.description || ''}`, [query, ...queryTerms])
+      }))
+      .sort((a, b) => b.relevance - a.relevance)
+      .slice(0, 10);
 
     res.json({
-      users: ((users as any) || []).map((u: any) => ({
-        ...u,
-        full_name: u.full_name || u.fullname || u.name || u.nama || u.username
-      })),
-      posts: ((posts as any) || []).map((p: any) => {
+      users: finalUsers,
+      posts: finalPosts.map(p => {
         const u = Array.isArray(p.user) ? p.user[0] : p.user;
         return {
           ...p,
-          content: p.caption || p.content || p.text,
           user: u ? {
             ...u,
             full_name: u.full_name || u.fullname || u.name || u.nama || u.username
           } : null
         };
       }),
-      groups: groups || []
+      groups: finalGroups
     });
   } catch (error: any) {
     console.error("[Search Error]:", error);

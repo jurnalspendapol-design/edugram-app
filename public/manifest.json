@@ -1,0 +1,17 @@
+{
+  "name": "Edugram: Eco-Influencer",
+  "short_name": "Edugram",
+  "description": "Aplikasi edukasi interaktif untuk siswa SMP dengan fitur postingan, badge ilmiah, dan leaderboard.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F4F1EA",
+  "theme_color": "#8A9A5B",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/3063/3063176.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
