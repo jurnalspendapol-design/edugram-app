@@ -469,7 +469,6 @@ app.post("/api/register", async (req, res) => {
       
       // Mapping tambahan yang mungkin wajib
       if (availableColumns.includes('student_number')) newUser.student_number = "0";
-      if (availableColumns.includes('school_name')) newUser.school_name = "Sekolah EduGram";
     } else {
       // Fallback jika tabel kosong/kolom tidak terdeteksi: gunakan nama kolom paling umum
       newUser.full_name = fullName;
@@ -641,7 +640,7 @@ app.get("/api/users/:id/followers", async (req, res) => {
       .from('follows')
       .select(`
         follower_id,
-        users!follows_follower_id_fkey (
+        users (
           id,
           full_name,
           username,
@@ -652,8 +651,13 @@ app.get("/api/users/:id/followers", async (req, res) => {
       .eq('following_id', req.params.id);
 
     if (error) {
-      console.error(error);
-      return res.status(500).json({ error: "Gagal mengambil pengikut" });
+      console.error("[Get Followers Error] Supabase Error Details:", JSON.stringify(error, null, 2));
+      return res.status(500).json({ error: "Gagal mengambil pengikut", details: error });
+    }
+    
+    if (!followers) {
+      console.error("[Get Followers Error] Followers data is null");
+      return res.status(500).json({ error: "Data pengikut tidak ditemukan" });
     }
 
     const formattedFollowers = followers.map((f: any) => ({
@@ -1074,8 +1078,12 @@ app.post("/api/groups", async (req, res) => {
     if (!name || !adminId) return res.status(400).json({ error: "Nama grup dan admin wajib diisi" });
 
     // Verify if user is a teacher
-    const { data: user } = await supabase.from('users').select('role').eq('id', adminId).single();
-    if (user?.role !== 'teacher') {
+    const { data: user, error: userError } = await supabase.from('users').select('role').eq('id', adminId).single();
+    if (userError || !user) {
+      return res.status(404).json({ error: "User tidak ditemukan" });
+    }
+    const role = user?.role?.toLowerCase();
+    if (role !== 'teacher' && role !== 'guru' && role !== 'admin') {
       return res.status(403).json({ error: "Hanya guru yang dapat membuat grup atau kelas baru" });
     }
 
@@ -1090,13 +1098,26 @@ app.post("/api/groups", async (req, res) => {
       created_at: new Date().toISOString()
     };
 
-    fallbackGroups[groupId] = newGroup;
-    fallbackGroupMembers[groupId] = [{
-      userId: adminId,
+    // Insert into Supabase
+    const { error: groupError } = await supabase.from('groups').insert(newGroup);
+    if (groupError) {
+      console.error("[Create Group Supabase Error]:", groupError);
+      return res.status(500).json({ error: "Gagal menyimpan grup ke database" });
+    }
+
+    const newMember = {
+      group_id: groupId,
+      user_id: adminId,
       role: 'admin',
       status: 'approved',
-      user: { fullName: adminName, username: adminUsername }
-    }];
+      created_at: new Date().toISOString()
+    };
+
+    const { error: memberError } = await supabase.from('group_members').insert(newMember);
+    if (memberError) {
+      console.error("[Create Group Member Supabase Error]:", memberError);
+      // We don't rollback the group creation here for simplicity, but in production we should
+    }
 
     res.json({ success: true, group: newGroup });
   } catch (error: any) {
@@ -1210,19 +1231,23 @@ app.get("/api/posts", async (req, res) => {
     const supabase = getSupabase();
     const userId = req.query.userId as string;
     const authorId = req.query.authorId as string;
+    const page = parseInt(req.query.page as string) || 1;
+    const limit = parseInt(req.query.limit as string) || 20;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
     
     // Simplified query for resilience and speed
     let query = supabase
       .from('posts')
       .select(`
-        id, author_id, subbab, caption, image_url, created_at, is_scientific,
+        id, author_id, subbab, caption, image_url, created_at, is_scientific, insightful, ask, support, location_lat, location_lng,
         users (
           full_name,
           class_name
         )
       `)
       .order('created_at', { ascending: false })
-      .limit(20); // Further limit to 20 to reduce load
+      .range(from, to);
 
 
     if (authorId) {
@@ -1793,7 +1818,7 @@ app.get("/api/leaderboard", async (req, res) => {
       return {
         id: u.id || u.username,
         username: u.username,
-        name: u.full_name || u.fullname || u.name || u.nama || u.username,
+        name: u.full_name || u.fullname || u.name || u.nama || u.username || "Tidak Diketahui",
         className: u.class_name || u.classname || u.kelas || "10-A",
         schoolName: (u as any).school_name || "Sekolah EduGram",
         xp: finalXp,
@@ -1807,7 +1832,7 @@ app.get("/api/leaderboard", async (req, res) => {
 
     const leaderboard = userStats
       .sort((a, b) => b.xp - a.xp || b.interactions - a.interactions)
-      .slice(0, 3);
+      .slice(0, 10);
 
     cachedLeaderboard = { data: leaderboard, timestamp: Date.now() };
     res.json(leaderboard);

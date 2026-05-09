@@ -121,6 +121,14 @@ const SOLUTION_KEYWORDS = ['solusi', 'tanam', 'pohon', 'daur ulang', 'hemat', 'b
 
 import HeatmapLayer from './components/HeatmapLayer';
 
+const MapInvalidator = () => {
+  const map = useMap();
+  useEffect(() => {
+    map.invalidateSize();
+  }, [map]);
+  return null;
+};
+
 const PostMap = ({ lat, lng, caption }: { lat?: number, lng?: number, caption: string }) => {
   if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) return null;
   const center: [number, number] = [lat, lng];
@@ -129,12 +137,14 @@ const PostMap = ({ lat, lng, caption }: { lat?: number, lng?: number, caption: s
   return (
     <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8] h-[150px] relative z-0">
       <MapContainer 
+        key={`${lat}-${lng}`}
         center={center} 
         zoom={14} 
         style={{ height: '100%', width: '100%' }}
         scrollWheelZoom={false}
         zoomControl={false}
       >
+        <MapInvalidator />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -541,6 +551,15 @@ const EcoArcadeModal = ({ isOpen, onClose, level, onComplete, gameType: initialG
     gameState.current.player.x = Math.max(0, Math.min(canvas.width - gameState.current.player.w, x - gameState.current.player.w / 2));
   };
 
+  const handleTouchMove = (e: React.TouchEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const touch = e.touches[0];
+    const x = touch.clientX - rect.left;
+    gameState.current.player.x = Math.max(0, Math.min(canvas.width - gameState.current.player.w, x - gameState.current.player.w / 2));
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -627,6 +646,7 @@ const EcoArcadeModal = ({ isOpen, onClose, level, onComplete, gameType: initialG
                 width={300}
                 height={400}
                 onMouseMove={handleMouseMove}
+                onTouchMove={handleTouchMove}
                 className="w-full h-auto block cursor-none"
               />
             )}
@@ -720,60 +740,46 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
 
   const fetchProfile = () => {
     if (!user?.id || !currentUser?.id) return;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    setLoading(true);
 
-    Promise.all([
-      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`, { signal: controller.signal }).then(async res => {
+    // Fetch profile
+    fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`)
+      .then(async res => {
         if (!res.ok) {
-          const errorData = await res.json().catch(() => ({}));
-          throw new Error(errorData.error || `Gagal mengambil profil (Status: ${res.status})`);
+          throw new Error(`Gagal mengambil profil (Status: ${res.status})`);
         }
         return res.json();
-      }),
-      fetch(`/api/users/${user.id}/followers`, { signal: controller.signal }).then(async res => {
-        if (!res.ok) {
-          console.warn(`Followers fetch failed with status ${res.status}`);
-          return [];
-        }
-        return res.json().catch((err) => {
-          console.error("Followers JSON parse error:", err);
-          return [];
-        });
-      }).catch(err => {
-        console.warn("Followers fetch network/promise error (non-fatal):", err);
-        return [];
-      }),
-      fetch(`/api/posts?authorId=${user.id}`, { signal: controller.signal }).then(async res => {
-        if (!res.ok) {
-          console.warn(`Posts fetch failed with status ${res.status}`);
-          return [];
-        }
-        return res.json().catch((err) => {
-          console.error("Posts JSON parse error:", err);
-          return [];
-        });
-      }).catch(err => {
-        console.warn("Posts fetch network/promise error (non-fatal):", err);
-        return [];
       })
-    ])
-      .then(([profileRes, followersRes, postsRes]) => {
-        clearTimeout(timeoutId);
-        if (profileRes) {
-          setProfileData(profileRes);
-          setEditBio(profileRes.bio || '');
-          setIsFollowing(profileRes.isFollowing);
-        }
-        setFollowers(Array.isArray(followersRes) ? followersRes : []);
-        setPosts(Array.isArray(postsRes) ? postsRes : []);
+      .then(profileRes => {
+        setProfileData(profileRes);
+        setEditBio(profileRes.bio || '');
+        setIsFollowing(profileRes.isFollowing);
         setLoading(false);
       })
       .catch(err => {
-        clearTimeout(timeoutId);
         console.error("Profile fetch error:", err);
         setLoading(false);
       });
+
+    // Fetch followers
+    fetch(`/api/users/${user.id}/followers`)
+      .then(async res => {
+        if (res.ok) {
+          const followersRes = await res.json();
+          setFollowers(Array.isArray(followersRes) ? followersRes : []);
+        }
+      })
+      .catch(err => console.warn("Followers fetch error:", err));
+
+    // Fetch posts
+    fetch(`/api/posts?authorId=${user.id}`)
+      .then(async res => {
+        if (res.ok) {
+          const postsRes = await res.json();
+          setPosts(Array.isArray(postsRes) ? postsRes : []);
+        }
+      })
+      .catch(err => console.warn("Posts fetch error:", err));
   };
 
   useEffect(() => {
@@ -2928,6 +2934,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_USER);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [posts, setPosts] = useState<Post[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [leaderboard, setLeaderboard] = useState<UserStats[]>([]);
   const [view, setView] = useState<'feed' | 'profile' | 'groups'>('feed');
   const [openComments, setOpenComments] = useState<Record<string, boolean>>({});
@@ -3057,50 +3064,45 @@ export default function App() {
   }, []);
 
   // Fetch data
-  const fetchData = async () => {
+  const fetchData = async (page: number = 1) => {
     if (!currentUser) return;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 20000);
+    
+    // Fetch posts separately
     try {
-      const [postsRes, lbRes] = await Promise.all([
-        fetch(`/api/posts?userId=${currentUser.id}`, { signal: controller.signal }),
-        fetch('/api/leaderboard', { signal: controller.signal })
-      ]);
-      
-      clearTimeout(timeoutId);
-      
-      if (postsRes.ok) {
-        const postsData = await postsRes.json();
+      const res = await fetch(`/api/posts?userId=${currentUser.id}&page=${page}&limit=10`);
+      if (res.ok) {
+        const postsData = await res.json();
         if (Array.isArray(postsData)) {
           setPosts(postsData);
         }
       } else {
-        console.error("Failed to fetch posts:", await postsRes.text());
+        console.error("Failed to fetch posts:", await res.text());
       }
-      
-      if (lbRes.ok) {
-        const lbData = await lbRes.json();
+    } catch (err) {
+      console.error("Failed to fetch posts:", err);
+    }
+
+    // Fetch leaderboard separately
+    try {
+      const res = await fetch('/api/leaderboard');
+      if (res.ok) {
+        const lbData = await res.json();
         if (Array.isArray(lbData)) {
           setLeaderboard(lbData);
         }
       } else {
-        console.error("Failed to fetch leaderboard:", await lbRes.text());
+        console.error("Failed to fetch leaderboard:", await res.text());
       }
-    } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err.name === 'AbortError') {
-        console.error("Fetch data timed out");
-      } else {
-        console.error("Failed to fetch data", err);
-      }
+    } catch (err) {
+      console.error("Failed to fetch leaderboard:", err);
     }
   };
 
   useEffect(() => {
     if (currentUser && view === 'feed') {
-      fetchData();
+      fetchData(currentPage);
     }
-  }, [currentUser, view]);
+  }, [currentUser, view, currentPage]);
 
   const handleMissionComplete = async (xp: number = 200) => {
     if (!currentUser) return;
@@ -3130,7 +3132,7 @@ export default function App() {
           // Update Eco-Guardian Health
           updateEcoHealth(currentUser.id, 20);
         }
-        fetchData();
+        fetchData(currentPage);
       } else {
         const errorData = await res.json().catch(() => ({}));
         alert(errorData.error || 'Gagal menyelesaikan misi');
@@ -3872,6 +3874,25 @@ export default function App() {
               ))
             )}
           </div>
+          <div className="flex justify-center items-center gap-4 mt-8 pb-8">
+            <button 
+              onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+              disabled={currentPage === 1}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-[#E5E0D8] text-[#4A4036] rounded-full font-bold hover:bg-[#F4F1EA] disabled:opacity-50 transition-all shadow-sm"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              Sebelumnya
+            </button>
+            <span className="font-bold text-[#8A9A5B] bg-[#F4F1EA] px-4 py-2 rounded-full">Halaman {currentPage}</span>
+            <button 
+              onClick={() => setCurrentPage(prev => prev + 1)}
+              disabled={posts.length < 10}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white border border-[#E5E0D8] text-[#4A4036] rounded-full font-bold hover:bg-[#F4F1EA] disabled:opacity-50 transition-all shadow-sm"
+            >
+              Selanjutnya
+              <ArrowLeft className="w-4 h-4 rotate-180" />
+            </button>
+          </div>
 
           {/* EcoMap removed from Feed bottom */}
         </div>
@@ -3890,128 +3911,121 @@ export default function App() {
             post={selectedPostForReport} 
             reporterId={currentUser.id} 
           />
-          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-4 sm:p-5 sticky md:top-24 space-y-6">
-            {/* Eco-Arcade Mini Games */}
-            <div>
-              <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
-                <Gamepad2 className="w-5 h-5 text-[#8A9A5B]" />
-                Eco-Arcade
-              </h2>
-              <div className="space-y-2">
-                <button 
-                  onClick={() => { setActiveGameType('sort'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-[#8A9A5B] group"
-                >
-                  <div className="w-8 h-8 bg-[#8A9A5B] rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
-                    <Trash2 className="w-4 h-4" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-bold text-[#4A4036]">Sortir Sampah</div>
-                    <div className="text-[9px] text-[#A8A096]">Misi Level 1</div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => { setActiveGameType('shield'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-blue-500 group"
-                >
-                  <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
-                    <Shield className="w-4 h-4" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-bold text-[#4A4036]">Atmosphere Shield</div>
-                    <div className="text-[9px] text-[#A8A096]">Misi Level 2</div>
-                  </div>
-                </button>
-                <button 
-                  onClick={() => { setActiveGameType('clicker'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-yellow-500 group"
-                >
-                  <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
-                    <Zap className="w-4 h-4" />
-                  </div>
-                  <div className="text-left">
-                    <div className="text-xs font-bold text-[#4A4036]">Energy Saver</div>
-                    <div className="text-[9px] text-[#A8A096]">Misi Level 3</div>
-                  </div>
-                </button>
-              </div>
+          
+          {/* Dropdown Menu for desktop/mobile */}
+          <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] p-4 sm:p-5 sticky md:top-24 space-y-4">
+            <div className="flex gap-2">
+              <button onClick={() => setActiveDropdown(activeDropdown === 'arcade' ? null : 'arcade')} className={`flex-1 p-2 rounded-lg font-bold text-sm ${activeDropdown === 'arcade' ? 'bg-[#8A9A5B] text-white' : 'bg-[#F4F1EA] text-[#4A4036]'}`}>Eco-Arcade</button>
+              <button onClick={() => setActiveDropdown(activeDropdown === 'map' ? null : 'map')} className={`flex-1 p-2 rounded-lg font-bold text-sm ${activeDropdown === 'map' ? 'bg-[#8A9A5B] text-white' : 'bg-[#F4F1EA] text-[#4A4036]'}`}>Peta</button>
+              <button onClick={() => setActiveDropdown(activeDropdown === 'leaderboard' ? null : 'leaderboard')} className={`flex-1 p-2 rounded-lg font-bold text-sm ${activeDropdown === 'leaderboard' ? 'bg-[#8A9A5B] text-white' : 'bg-[#F4F1EA] text-[#4A4036]'}`}>Juara</button>
             </div>
 
-            {/* Interactive Eco-Map - Compact Sidebar Map */}
-            <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm">
-              <h2 className="font-bold text-sm mb-3 flex items-center gap-2 text-[#8A9A5B]">
-                <Globe className="w-4 h-4" />
-                Sebaran Edu-Aksi
-              </h2>
-              <div className="rounded-xl overflow-hidden h-48 border border-[#E5E0D8]">
-                <EcoMap posts={posts} />
+            {activeDropdown === 'arcade' && (
+              <div>
+                <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
+                  <Gamepad2 className="w-5 h-5 text-[#8A9A5B]" />
+                  Eco-Arcade
+                </h2>
+                <div className="space-y-2">
+                  <button 
+                    onClick={() => { setActiveGameType('sort'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-[#8A9A5B] group"
+                  >
+                    <div className="w-8 h-8 bg-[#8A9A5B] rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                      <Trash2 className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-[#4A4036]">Sortir Sampah</div>
+                      <div className="text-[9px] text-[#A8A096]">Misi Level 1</div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => { setActiveGameType('shield'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-blue-500 group"
+                  >
+                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                      <Shield className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-[#4A4036]">Atmosphere Shield</div>
+                      <div className="text-[9px] text-[#A8A096]">Misi Level 2</div>
+                    </div>
+                  </button>
+                  <button 
+                    onClick={() => { setActiveGameType('clicker'); setActiveGameLevel(1); setIsArcadeOpen(true); }}
+                    className="w-full flex items-center gap-3 p-3 rounded-xl bg-[#F4F1EA] hover:bg-[#E5E0D8] transition-all border border-transparent hover:border-yellow-500 group"
+                  >
+                    <div className="w-8 h-8 bg-yellow-500 rounded-lg flex items-center justify-center text-white shadow-sm group-hover:scale-110 transition-transform">
+                      <Zap className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <div className="text-xs font-bold text-[#4A4036]">Energy Saver</div>
+                      <div className="text-[9px] text-[#A8A096]">Misi Level 3</div>
+                    </div>
+                  </button>
+                </div>
               </div>
-            </div>
+            )}
 
-            <div>
+            {activeDropdown === 'map' && (
+              <div className="p-4 bg-white rounded-2xl border border-[#E5E0D8] shadow-sm">
+                <h2 className="font-bold text-sm mb-3 flex items-center gap-2 text-[#8A9A5B]">
+                  <Globe className="w-4 h-4" />
+                  Sebaran Edu-Aksi
+                </h2>
+                <div className="rounded-xl overflow-hidden h-48 border border-[#E5E0D8]">
+                  <EcoMap posts={posts} />
+                </div>
+              </div>
+            )}
+
+            {/* Leaderboard - Permanently shows and scrollable */}
+            <div className="mt-8">
               <h2 className="font-bold text-lg mb-4 flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-[#D2B48C]" />
                 Top Eco-Influencers
               </h2>
-            
-            {leaderboard.length === 0 ? (
-              <p className="text-sm text-[#A8A096] text-center py-8 border border-dashed border-[#E5E0D8] rounded-xl">Belum ada data interaksi.</p>
-            ) : (
-              <div className="grid md:grid-cols-2 gap-3">
-                {leaderboard.map((user, index) => (
-                  <div 
-                    key={user.id} 
-                    onClick={() => {
-                      setSelectedUserForProfile({ id: user.id, fullName: user.name, className: user.className } as any);
-                      setView('profile');
-                    }}
-                    className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F4F1EA] transition-colors border border-transparent hover:border-[#E5E0D8] cursor-pointer"
-                  >
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0
-                      ${index === 0 ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' : 
-                        index === 1 ? 'bg-slate-100 text-slate-700 border border-slate-200' : 
-                        'bg-orange-100 text-orange-800 border border-orange-200'}`}
+              
+              <div className="max-h-[300px] overflow-y-auto pr-2 grid grid-cols-1 gap-3">
+                {leaderboard.length === 0 ? (
+                  <p className="text-sm text-[#A8A096] text-center py-8 border border-dashed border-[#E5E0D8] rounded-xl">Belum ada data interaksi.</p>
+                ) : (
+                  leaderboard.map((user, index) => (
+                    <div 
+                      key={user.id} 
+                      onClick={() => {
+                        setSelectedUserForProfile({ id: user.id, fullName: user.name, className: user.className } as any);
+                        setView('profile');
+                      }}
+                      className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-[#F4F1EA] transition-colors border border-transparent hover:border-[#E5E0D8] cursor-pointer"
                     >
-                      #{index + 1}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-bold text-sm truncate flex items-center gap-1">
-                        {user.name}
-                        <span className="text-[9px] bg-[#E5E0D8] text-[#4A4036] px-1 rounded">
-                          {user.role === 'teacher' ? 'Guru' : user.className}
-                        </span>
-                        <span className="text-[9px] bg-[#8A9A5B] text-white px-1 rounded">{user.schoolName}</span>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0
+                        ${index === 0 ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' : 
+                          index === 1 ? 'bg-slate-100 text-slate-700 border border-slate-200' : 
+                          'bg-orange-100 text-orange-800 border border-orange-200'}`}
+                      >
+                        #{index + 1}
                       </div>
-                      <div className="text-xs text-[#A8A096]">{user.interactions} Interaksi</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm text-[#4A4036] truncate">
+                          {user.name}
+                        </div>
+                        <div className="text-[10px] text-[#A8A096] flex items-center gap-1">
+                          <span>{user.role === 'teacher' ? 'Guru' : user.className}</span>
+                          <span>•</span>
+                          <span>{user.schoolName}</span>
+                          <span>•</span>
+                          <span className="font-bold text-[#8A9A5B]">{user.xp} XP</span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs font-bold text-[#8A9A5B] bg-[#F4F1EA] px-2 py-1 rounded-md border border-[#E5E0D8]">
-                      {user.xp} XP
-                    </div>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            )}
-            </div>
-            
-            <div className="mt-6 pt-5 border-t border-[#E5E0D8]">
-              <h3 className="text-xs font-bold text-[#A8A096] uppercase tracking-wider mb-3">Cara Dapat XP:</h3>
-              <ul className="text-sm text-[#4A4036] space-y-2">
-                <li className="flex items-center justify-between">
-                  <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8A9A5B]"></span> Buat postingan</span>
-                  <span className="font-bold text-[#8A9A5B]">+10</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8A9A5B]"></span> Pakai kata ilmiah</span>
-                  <span className="font-bold text-[#8A9A5B]">+5</span>
-                </li>
-                <li className="flex items-center justify-between">
-                  <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#8A9A5B]"></span> Dapat interaksi</span>
-                  <span className="font-bold text-[#8A9A5B]">+2</span>
-                </li>
-              </ul>
             </div>
           </div>
         </div>
+
       </main>
 
       {/* Edit Post Modal */}
