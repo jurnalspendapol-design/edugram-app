@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile, Post, Comment, UserStats, Subbab } from './types';
 import { ECO_FACTS, SCIENTIFIC_KEYWORDS, DAILY_QUESTS, SUBBAB_COLORS } from './constants';
@@ -26,9 +26,19 @@ if (typeof window !== 'undefined') {
   });
   
   window.addEventListener('unhandledrejection', (event) => {
+    console.error('⚠️ UNHANDLED PROMISE REJECTION');
+    console.error('Reason:', event.reason);
+    if (typeof event.reason === 'object' && event.reason !== null) {
+      console.error('Reason properties:', Object.keys(event.reason));
+    }
+    console.error('Promise:', event.promise);
+  });
+  
+  window.addEventListener('unhandledrejection', (event) => {
     console.log('Got unhandled rejection', event);
-    // Suppress noise from known benign rejections if any
-    if (event.reason === 'cancel' || (event.reason && event.reason.message === 'cancel')) return;
+    // Suppress noise from known benign rejections like empty object rejections
+    if (!event.reason || (typeof event.reason === 'object' && Object.keys(event.reason).length === 0 && !(event.reason instanceof Error))) return;
+
 
     try {
       const reason = event.reason;
@@ -227,6 +237,14 @@ const EcoMap = ({ posts }: { posts: Post[] }) => {
   const center: [number, number] = mapPosts.length > 0 
     ? [mapPosts[0].locationLat!, mapPosts[0].locationLng!] 
     : defaultCenter;
+
+  // Force resize on mount to fix Leaflet issue
+  useLayoutEffect(() => {
+    const timer = setTimeout(() => {
+      window.dispatchEvent(new Event('resize'));
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <div className="bg-white rounded-2xl shadow-sm border border-[#E5E0D8] overflow-hidden mb-6">
@@ -679,7 +697,7 @@ const resizeImage = (file: File, maxWidth: number = 800): Promise<string> => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
+        resolve(canvas.toDataURL('image/jpeg', 0.5));
       };
       img.onerror = (error) => reject(error);
     };
@@ -702,15 +720,18 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
 
   const fetchProfile = () => {
     if (!user?.id || !currentUser?.id) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
+
     Promise.all([
-      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`).then(async res => {
+      fetch(`/api/users/${user.id}?viewerId=${currentUser.id}`, { signal: controller.signal }).then(async res => {
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
           throw new Error(errorData.error || `Gagal mengambil profil (Status: ${res.status})`);
         }
         return res.json();
       }),
-      fetch(`/api/users/${user.id}/followers`).then(async res => {
+      fetch(`/api/users/${user.id}/followers`, { signal: controller.signal }).then(async res => {
         if (!res.ok) {
           console.warn(`Followers fetch failed with status ${res.status}`);
           return [];
@@ -723,7 +744,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
         console.warn("Followers fetch network/promise error (non-fatal):", err);
         return [];
       }),
-      fetch(`/api/posts?authorId=${user.id}`).then(async res => {
+      fetch(`/api/posts?authorId=${user.id}`, { signal: controller.signal }).then(async res => {
         if (!res.ok) {
           console.warn(`Posts fetch failed with status ${res.status}`);
           return [];
@@ -738,6 +759,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
       })
     ])
       .then(([profileRes, followersRes, postsRes]) => {
+        clearTimeout(timeoutId);
         if (profileRes) {
           setProfileData(profileRes);
           setEditBio(profileRes.bio || '');
@@ -748,6 +770,7 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
         setLoading(false);
       })
       .catch(err => {
+        clearTimeout(timeoutId);
         console.error("Profile fetch error:", err);
         setLoading(false);
       });
@@ -2429,7 +2452,7 @@ const GlobalSearch = ({
           setIsLoading(false);
         }
       };
-      const timeoutId = setTimeout(fetchResults, 300);
+      const timeoutId = setTimeout(fetchResults, 500);
       return () => clearTimeout(timeoutId);
     } else {
       setResults({users: [], posts: [], groups: []});
@@ -3025,7 +3048,7 @@ export default function App() {
                 localStorage.setItem('edugram_user_profile', JSON.stringify(updatedProfile));
               }
             })
-            .catch(err => console.error("Failed to refresh user profile from server:", err));
+            .catch(err => console.error('Error fetching profile:', err));
         }
       } catch (e) {
         console.error("Failed to parse saved user", e);
@@ -3036,11 +3059,15 @@ export default function App() {
   // Fetch data
   const fetchData = async () => {
     if (!currentUser) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20000);
     try {
       const [postsRes, lbRes] = await Promise.all([
-        fetch(`/api/posts?userId=${currentUser.id}`),
-        fetch('/api/leaderboard')
+        fetch(`/api/posts?userId=${currentUser.id}`, { signal: controller.signal }),
+        fetch('/api/leaderboard', { signal: controller.signal })
       ]);
+      
+      clearTimeout(timeoutId);
       
       if (postsRes.ok) {
         const postsData = await postsRes.json();
@@ -3059,8 +3086,13 @@ export default function App() {
       } else {
         console.error("Failed to fetch leaderboard:", await lbRes.text());
       }
-    } catch (err) {
-      console.error("Failed to fetch data", err);
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        console.error("Fetch data timed out");
+      } else {
+        console.error("Failed to fetch data", err);
+      }
     }
   };
 
@@ -3353,13 +3385,11 @@ export default function App() {
         xpGained={receiptData.xp} 
         postTitle={receiptData.title} 
       />
-      {/* Floating Tutorial Button */}
       <button
         onClick={() => setIsTutorialOpen(true)}
-        className="fixed bottom-32 left-6 z-[90] flex items-center gap-2 bg-white text-[#8A9A5B] px-4 py-3 rounded-full shadow-xl border-2 border-[#8A9A5B] hover:bg-[#8A9A5B] hover:text-white transition-all group hover:scale-105"
+        className="fixed top-20 right-6 z-[90] flex items-center justify-center p-3 bg-white text-[#8A9A5B] rounded-full shadow-xl border-2 border-[#8A9A5B] hover:bg-[#8A9A5B] hover:text-white transition-all group hover:scale-105"
       >
-        <MessageCircleQuestion className="w-6 h-6" />
-        <span className="font-bold text-sm hidden sm:block group-hover:block">Cara Pakai EduGram</span>
+        <MessageCircleQuestion className="w-8 h-8" />
       </button>
 
       {/* Header */}
@@ -3747,6 +3777,7 @@ export default function App() {
                             src={post.imageUrl} 
                             alt="Post attachment" 
                             className="w-full h-auto max-h-[400px] object-cover"
+                            loading="lazy"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';
                             }}
@@ -3926,7 +3957,7 @@ export default function App() {
             {leaderboard.length === 0 ? (
               <p className="text-sm text-[#A8A096] text-center py-8 border border-dashed border-[#E5E0D8] rounded-xl">Belum ada data interaksi.</p>
             ) : (
-              <div className="space-y-3">
+              <div className="grid md:grid-cols-2 gap-3">
                 {leaderboard.map((user, index) => (
                   <div 
                     key={user.id} 

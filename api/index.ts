@@ -1211,24 +1211,19 @@ app.get("/api/posts", async (req, res) => {
     const userId = req.query.userId as string;
     const authorId = req.query.authorId as string;
     
-    // Detect available columns for resilience
-    const availableColumns = await getTableColumns(supabase, 'posts');
-    const selectColumns = availableColumns.length > 0 
-      ? availableColumns.filter(c => c !== 'timestamp').join(', ') // filter out 'timestamp' if it was added by mistake elsewhere
-      : '*';
-
+    // Simplified query for resilience and speed
     let query = supabase
       .from('posts')
       .select(`
-        ${selectColumns},
+        id, author_id, subbab, caption, image_url, created_at, is_scientific,
         users (
           full_name,
-          class_name,
-          username
+          class_name
         )
       `)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(20); // Further limit to 20 to reduce load
+
 
     if (authorId) {
       query = query.eq('author_id', authorId);
@@ -1251,8 +1246,8 @@ app.get("/api/posts", async (req, res) => {
     // OPTIMIZATION: Use specialized queries for counts if possible, but for now 
     // we ensure we only fetch minimal data and use optimized filters.
     const [commentResult, interactionResult] = await Promise.all([
-      postIds.length > 0 ? supabase.from('comments').select('post_id').in('post_id', postIds).limit(1000) : { data: [] },
-      userId && postIds.length > 0 ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds).limit(1000) : { data: [] }
+      postIds.length > 0 ? supabase.from('comments').select('post_id').in('post_id', postIds).limit(500) : { data: [] },
+      userId && postIds.length > 0 ? supabase.from('interactions').select('post_id, type').eq('user_id', userId).in('post_id', postIds).limit(500) : { data: [] }
     ]);
 
     const commentCounts = commentResult.data || [];
@@ -1747,7 +1742,14 @@ app.post("/api/missions/complete", async (req, res) => {
 });
 
 // Get Leaderboard
+let cachedLeaderboard: { data: any, timestamp: number } | null = null;
+const LEADERBOARD_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 app.get("/api/leaderboard", async (req, res) => {
+  if (cachedLeaderboard && Date.now() - cachedLeaderboard.timestamp < LEADERBOARD_CACHE_TTL) {
+    return res.json(cachedLeaderboard.data);
+  }
+
   try {
     const supabase = getSupabase();
     const { data: users, error: usersError } = await supabase.from('users').select('*') as { data: any[], error: any };
@@ -1807,6 +1809,7 @@ app.get("/api/leaderboard", async (req, res) => {
       .sort((a, b) => b.xp - a.xp || b.interactions - a.interactions)
       .slice(0, 3);
 
+    cachedLeaderboard = { data: leaderboard, timestamp: Date.now() };
     res.json(leaderboard);
   } catch (error: any) {
     handleSupabaseError(error, res, "Leaderboard Catch");
