@@ -15,63 +15,9 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet.heat';
 
-// Global error handler for debugging
 if (typeof window !== 'undefined') {
-  window.addEventListener('error', (event) => {
-    console.error('Global error caught:', event.error);
-    // Don't show alert for benign errors
-    if (event.message && !event.message.includes('ResizeObserver')) {
-      // alert(`Terjadi kesalahan sistem: ${event.message}`);
-    }
-  });
-  
-  window.addEventListener('unhandledrejection', (event) => {
-    console.error('⚠️ UNHANDLED PROMISE REJECTION');
-    console.error('Reason:', event.reason);
-    if (typeof event.reason === 'object' && event.reason !== null) {
-      console.error('Reason properties:', Object.keys(event.reason));
-    }
-    console.error('Promise:', event.promise);
-  });
-  
-  window.addEventListener('unhandledrejection', (event) => {
-    console.log('Got unhandled rejection', event);
-    // Suppress noise from known benign rejections like empty object rejections
-    if (!event.reason || (typeof event.reason === 'object' && Object.keys(event.reason).length === 0 && !(event.reason instanceof Error))) return;
-
-
-    try {
-      const reason = event.reason;
-      console.group('⚠️ Unhandled promise rejection');
-      console.error('Type:', event.type);
-      
-      if (reason) {
-        console.error('Rejection Reason:', reason);
-        if (reason instanceof Error) {
-          console.error('Message:', reason.message || '(no message)');
-          console.error('Stack:', reason.stack || '(no stack)');
-        } else if (typeof reason === 'object') {
-          try {
-            console.error('Reason Object:', JSON.stringify(reason, null, 2));
-          } catch (e) {
-            console.error('Reason Object (unserializable):', reason);
-          }
-        } else {
-          console.error('Reason Stringified:', String(reason));
-        }
-      } else {
-        console.error('Rejection Reason is null, undefined, or empty');
-      }
-      
-      console.error('Promise:', event.promise);
-      console.groupEnd();
-    } catch (err) {
-      console.error('Fatal error in unhandledrejection listener:', err);
-    }
-  });
+  console.log('App.tsx loading...');
 }
-
-console.log('App.tsx loading...');
 
 export const updateEcoHealth = (userId: string, amount: number) => {
   const storedHealth = localStorage.getItem(`eco_health_${userId}`);
@@ -697,7 +643,7 @@ const EcoArcadeModal = ({ isOpen, onClose, level, onComplete, gameType: initialG
 
 
 
-const resizeImage = (file: File, maxWidth: number = 800): Promise<string> => {
+const resizeImage = (file: File, maxWidth: number = 1080, maxHeight: number = 1080): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.readAsDataURL(file);
@@ -709,15 +655,25 @@ const resizeImage = (file: File, maxWidth: number = 800): Promise<string> => {
         const canvas = document.createElement('canvas');
         let width = img.width;
         let height = img.height;
-        if (width > maxWidth) {
-          height *= maxWidth / width;
-          width = maxWidth;
+        
+        if (width > height) {
+          if (width > maxWidth) {
+            height *= maxWidth / width;
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width *= maxHeight / height;
+            height = maxHeight;
+          }
         }
+        
         canvas.width = width;
         canvas.height = height;
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.5));
+        // Better clarity with 0.8 quality
+        resolve(canvas.toDataURL('image/webp', 0.8));
       };
       img.onerror = (error) => reject(error);
     };
@@ -1114,10 +1070,12 @@ const ProfilePage = ({ user, currentUser, onBack }: { user: UserProfile, current
                       </span>
                     </div>
                     {post.imageUrl && (
-                      <img src={post.imageUrl} alt="Post" className="w-full h-64 object-cover" referrerPolicy="no-referrer" />
+                      <div className="bg-[#F4F1EA] flex justify-center border-t border-b border-[#E5E0D8]">
+                        <img src={post.imageUrl} alt="Post" className="w-full h-auto" referrerPolicy="no-referrer" />
+                      </div>
                     )}
                     <div className="p-4">
-                      <p className="text-[#4A4036] whitespace-pre-wrap">{post.caption}</p>
+                      <PostCaption caption={post.caption} />
                     </div>
                   </div>
                 ))
@@ -1866,8 +1824,6 @@ const GroupsView = ({ user, initialGroupId, onClearInitialGroup, onBack, leaderb
       fetchMessages(selectedGroup.id);
       fetchMaterials(selectedGroup.id);
       fetchAssignments(selectedGroup.id);
-      const interval = setInterval(() => fetchMessages(selectedGroup.id), 5000); // Poll for new messages
-      return () => clearInterval(interval);
     } else {
       setGroupDetails(null);
       setMessages([]);
@@ -2861,25 +2817,6 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
         </button>
 
         <div className="mt-8 pt-6 border-t border-gray-200">
-          <button 
-            onClick={async () => {
-              try {
-                const res = await fetch('/api/debug/db');
-                if (!res.ok) {
-                  const errorData = await res.json().catch(() => ({}));
-                  throw new Error(errorData.error || 'Gagal mengambil status database');
-                }
-                const data = await res.json();
-                setAuthError(`🔍 DEBUG DB:\n${JSON.stringify(data, null, 2)}`);
-              } catch (e: any) {
-                setAuthError(`❌ Gagal debug: ${e.message}`);
-              }
-            }}
-            className="w-full mb-4 text-xs text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            Cek Status Database (Debug)
-          </button>
-          
           <p className="text-sm text-center text-gray-500 mb-4">Butuh bantuan? Hubungi Pengembang:</p>
           <p className="text-sm font-bold text-center mb-2">Wahyu Sulaiman, M.Pd.</p>
           <div className="flex justify-center gap-6">
@@ -2893,6 +2830,10 @@ const LoginPage = ({ onLogin }: { onLogin: (profile: UserProfile) => void }) => 
               <Instagram className="w-6 h-6" />
             </a>
           </div>
+        </div>
+
+        <div className="mt-8">
+          <p className="text-center text-xs text-gray-400">© 2026 EduGram. Semua hak dilindungi.</p>
         </div>
       </div>
     </div>
@@ -2929,6 +2870,30 @@ const InstallPrompt = ({ onInstall, onClose }: { onInstall: () => void, onClose:
     </div>
   </div>
 );
+
+const PostCaption = ({ caption }: { caption: string }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const maxLength = 250;
+  const isLong = caption.length > maxLength;
+  
+  const displayCaption = isExpanded || !isLong ? caption : caption.substring(0, maxLength) + '...';
+  
+  return (
+    <div className="prose prose-sm prose-stone max-w-none mb-4 prose-p:leading-relaxed prose-a:text-[#8A9A5B]">
+      <div className="markdown-body">
+        <ReactMarkdown>{displayCaption}</ReactMarkdown>
+      </div>
+      {isLong && (
+        <button 
+          onClick={() => setIsExpanded(!isExpanded)} 
+          className="text-[#8A9A5B] font-bold text-sm hover:underline mt-1 outline-none"
+        >
+          {isExpanded ? 'Tampilkan lebih sedikit' : 'Baca selengkapnya'}
+        </button>
+      )}
+    </div>
+  );
+};
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile>(GUEST_USER);
@@ -3738,9 +3703,7 @@ export default function App() {
 
                     {/* Post Content */}
                     <div className="sm:pl-13">
-                      <div className="prose prose-sm prose-stone max-w-none mb-4 prose-p:leading-relaxed prose-a:text-[#8A9A5B]">
-                        <ReactMarkdown>{post.caption}</ReactMarkdown>
-                      </div>
+                      <PostCaption caption={post.caption} />
 
                       {post.locationLat && post.locationLng && (
                         <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8]">
@@ -3774,11 +3737,11 @@ export default function App() {
                       )}
                       
                       {post.imageUrl && (
-                        <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#F4F1EA]">
+                        <div className="mb-4 rounded-xl overflow-hidden border border-[#E5E0D8] bg-[#F4F1EA] flex justify-center">
                           <img 
                             src={post.imageUrl} 
                             alt="Post attachment" 
-                            className="w-full h-auto max-h-[400px] object-cover"
+                            className="w-full h-auto"
                             loading="lazy"
                             onError={(e) => {
                               (e.target as HTMLImageElement).style.display = 'none';

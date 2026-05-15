@@ -45,9 +45,6 @@ async function getTableColumns(supabase: SupabaseClient, tableName: string): Pro
     if (error) {
       console.warn(`[Schema] Schema detection warning for '${tableName}':`, error.message);
       
-      // If it's a column doesn't exist error (42703), it means the schema cache is stale
-      // and thinking some column exists that doesn't. 
-      // In this case, we'll try a very minimal select to at least confirm the table exists.
       if (error.code === '42703') {
         const { data: minimalData, error: minimalError } = await supabase.from(tableName).select('id').limit(1);
         if (minimalData && !minimalError) {
@@ -60,7 +57,23 @@ async function getTableColumns(supabase: SupabaseClient, tableName: string): Pro
       return [];
     }
     
-    const columns = data && (data as any[]).length > 0 ? Object.keys(data[0]) : [];
+    let columns = data && (data as any[]).length > 0 ? Object.keys(data[0]) : [];
+    
+    if (columns.length === 0) {
+      // Table exists but is empty, fallback to known columns so we don't break queries
+      if (tableName === 'users') {
+        columns = ['id', 'username', 'password', 'full_name', 'class_name', 'student_number', 'school_name', 'profile_picture_url', 'bio', 'role', 'xp', 'created_at'];
+      } else if (tableName === 'posts') {
+        columns = ['id', 'author_id', 'subbab', 'caption', 'image_url', 'is_scientific', 'is_mission', 'game_level', 'created_at', 'insightful', 'ask', 'support', 'location_lat', 'location_lng'];
+      } else if (tableName === 'comments') {
+        columns = ['id', 'post_id', 'author_id', 'content', 'created_at'];
+      } else if (tableName === 'interactions') {
+        columns = ['id', 'post_id', 'user_id', 'type', 'created_at'];
+      } else {
+        columns = ['id'];
+      }
+    }
+    
     schemaCache[tableName] = columns;
     console.log(`[Schema] Detected columns for '${tableName}':`, columns);
     return columns;
@@ -117,8 +130,17 @@ async function getUserStreakInfo(userId: string, supabase: SupabaseClient) {
 }
 
 const app = express();
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ limit: '10mb', extended: true }));
+
+// Cache GET requests at Vercel Edge to save Origin Data Transfer egress and Supabase requests
+// 30 seconds TTL, serve stale while revalidating for another 60 seconds
+app.use((req, res, next) => {
+  if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'public, s-maxage=30, stale-while-revalidate=60');
+  }
+  next();
+});
 
 // Request logger
 app.use((req, res, next) => {
@@ -169,6 +191,34 @@ function handleSupabaseError(error: any, res: express.Response, context: string)
 // --- API Routes ---
 
 // Setup DB SQL Helper
+app.get("/api/export-data", async (req, res) => {
+  const userId = req.query.userId as string;
+  if (!userId) return res.status(400).json({ error: "userId required" });
+  try {
+    const supabase = getSupabase();
+    const [userRes, postsRes, commentsRes, interactionsRes] = await Promise.all([
+      supabase.from('users').select('*').eq('id', userId).single(),
+      supabase.from('posts').select('*').eq('author_id', userId),
+      supabase.from('comments').select('*').eq('author_id', userId),
+      supabase.from('interactions').select('*').eq('user_id', userId)
+    ]);
+    
+    // We provide a single JSON with all their data
+    const exportData = {
+      profile: userRes.data,
+      posts: postsRes.data || [],
+      comments: commentsRes.data || [],
+      interactions: interactionsRes.data || []
+    };
+    
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="ecogram_export_${userId}.json"`);
+    res.send(JSON.stringify(exportData, null, 2));
+  } catch (error) {
+    handleSupabaseError(error, res, "Export data");
+  }
+});
+
 app.get("/api/setup-db", (req, res) => {
   const sql = `
 -- 1. Tabel Users
@@ -262,6 +312,71 @@ CREATE TABLE IF NOT EXISTS assignments (
   question TEXT,
   options JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 8. Tabel Groups
+CREATE TABLE IF NOT EXISTS groups (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  type TEXT DEFAULT 'topic',
+  privacy TEXT DEFAULT 'public',
+  admin_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 9. Tabel Group Members
+CREATE TABLE IF NOT EXISTS group_members (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  role TEXT DEFAULT 'member',
+  status TEXT DEFAULT 'pending',
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(group_id, user_id)
+);
+
+-- 10. Tabel Group Messages
+CREATE TABLE IF NOT EXISTS group_messages (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 11. Tabel Group Materials
+CREATE TABLE IF NOT EXISTS group_materials (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  url TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 12. Tabel Group Assignments
+CREATE TABLE IF NOT EXISTS group_assignments (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  group_id TEXT REFERENCES groups(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  due_date TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- 13. Tabel Assignment Submissions
+CREATE TABLE IF NOT EXISTS assignment_submissions (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  assignment_id UUID REFERENCES group_assignments(id) ON DELETE CASCADE,
+  user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+  content TEXT NOT NULL,
+  score INTEGER,
+  feedback TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(assignment_id, user_id)
 );
 
 -- --- KEBIJAKAN RLS (Row Level Security) ---
@@ -405,6 +520,79 @@ app.get("/api/debug/db", async (req, res) => {
   } catch (e: any) {
     console.error("[Debug DB Error]:", e);
     res.status(500).json({ error: e.message });
+  }
+});
+
+// Export Database (untuk migrasi akun / backup)
+app.get("/api/export-db", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const tables = ['users', 'posts', 'comments', 'interactions', 'follows', 'reports', 'groups', 'group_members', 'group_materials', 'group_assignments', 'assignment_submissions', 'group_messages'];
+    const exportData: Record<string, any[]> = {};
+    
+    for (const table of tables) {
+      try {
+        const { data } = await supabase.from(table).select('*').limit(10000);
+        if (data && data.length > 0) {
+          exportData[table] = data;
+        }
+      } catch (e) {
+        // Abaikan kalau tabel tidak ada
+      }
+    }
+    
+    // Kirim sebagai file json yang bisa di-download
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename=edugram_backup.json');
+    res.send(JSON.stringify(exportData, null, 2));
+  } catch (error: any) {
+    console.error("[Export Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Import Database
+app.post("/api/import-db", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    const importData = req.body;
+    
+    if (!importData || typeof importData !== 'object') {
+      return res.status(400).json({ error: "Data impor tidak valid" });
+    }
+    
+    const results: Record<string, any> = {};
+    // Urutan penting untuk Foreign Keys jika ada
+    const tablesOrder = ['users', 'posts', 'comments', 'interactions', 'follows', 'reports', 'groups', 'group_members', 'group_materials', 'group_assignments', 'assignment_submissions', 'group_messages'];
+    
+    for (const table of tablesOrder) {
+      if (importData[table] && Array.isArray(importData[table]) && importData[table].length > 0) {
+        try {
+          const batchSize = 100;
+          let successCount = 0;
+          let errors = [];
+          
+          for (let i = 0; i < importData[table].length; i += batchSize) {
+            const batch = importData[table].slice(i, i + batchSize);
+            const { error } = await supabase.from(table).upsert(batch, { onConflict: 'id' });
+            if (error) {
+               errors.push(error.message);
+            } else {
+               successCount += batch.length;
+            }
+          }
+          
+          results[table] = { success: successCount, errors: errors.length > 0 ? errors : null };
+        } catch (e: any) {
+           results[table] = { error: e.message };
+        }
+      }
+    }
+    
+    res.json({ success: true, results });
+  } catch (error: any) {
+    console.error("[Import Error]:", error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -628,6 +816,59 @@ app.get("/api/delete-all-users", async (req, res) => {
     res.json({ success: true, message: "All users deleted" });
   } catch (error: any) {
     console.error("[Delete All Users Error]:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get("/api/sync-xp", async (req, res) => {
+  try {
+    const supabase = getSupabase();
+    
+    const { data: users, error: usersError } = await supabase.from('users').select('id, xp');
+    if (usersError) return res.status(500).json({ error: usersError.message });
+    
+    const availableColumns = await getTableColumns(supabase, 'posts');
+    const postSelect = ['author_id'];
+    if (availableColumns.includes('insightful')) postSelect.push('insightful');
+    if (availableColumns.includes('ask')) postSelect.push('ask');
+    if (availableColumns.includes('support')) postSelect.push('support');
+    if (availableColumns.includes('is_scientific')) postSelect.push('is_scientific');
+
+    const { data: posts, error: postsError } = await supabase.from('posts').select(postSelect.join(','));
+    if (postsError) return res.status(500).json({ error: postsError.message });
+
+    const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id');
+    if (commentsError) return res.status(500).json({ error: commentsError.message });
+
+    let updatedCount = 0;
+    const updatePromises: any[] = [];
+    
+    for (const u of (users || [])) {
+      const userPosts = (posts || []).filter(p => p.author_id === u.id);
+      const userComments = (comments || []).filter(c => c.author_id === u.id);
+      
+      const interactionsReceived = userPosts.reduce((acc, p) => acc + ((p as any).insightful || 0) + ((p as any).ask || 0) + ((p as any).support || 0), 0);
+      
+      const calculatedXp = (userPosts.length * 10) + 
+                           (userPosts.filter(p => (p as any).is_scientific).length * 5) + 
+                           (userComments.length * 2) + 
+                           (interactionsReceived * 2);
+                           
+      const finalXp = Math.max(u.xp || 0, calculatedXp);
+      
+      if (finalXp > (u.xp || 0)) {
+        updatePromises.push(supabase.from('users').update({ xp: finalXp }).eq('id', u.id));
+        updatedCount++;
+      }
+    }
+    
+    if (updatePromises.length > 0) {
+      await Promise.all(updatePromises);
+    }
+    
+    res.json({ success: true, message: `Berhasil menyinkronkan XP untuk ${updatedCount} pengguna.` });
+  } catch (error: any) {
+    console.error("[Sync XP Error]:", error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1777,9 +2018,27 @@ app.get("/api/leaderboard", async (req, res) => {
 
   try {
     const supabase = getSupabase();
-    const { data: users, error: usersError } = await supabase.from('users').select('*') as { data: any[], error: any };
+    
+    // Because the users' table XP might not be accurately synced with all their posts,
+    // we do a lightweight dynamic calculation here.
+    
+    // 1. Get users (without huge text fields like bio if possible)
+    const userCols = await getTableColumns(supabase, 'users');
+    const selectUserCols = ['id', 'username', 'xp'];
+    if (userCols.includes('full_name')) selectUserCols.push('full_name');
+    if (userCols.includes('fullname')) selectUserCols.push('fullname');
+    if (userCols.includes('name')) selectUserCols.push('name');
+    if (userCols.includes('nama')) selectUserCols.push('nama');
+    if (userCols.includes('class_name')) selectUserCols.push('class_name');
+    if (userCols.includes('classname')) selectUserCols.push('classname');
+    if (userCols.includes('kelas')) selectUserCols.push('kelas');
+    if (userCols.includes('school_name')) selectUserCols.push('school_name');
+    if (userCols.includes('role')) selectUserCols.push('role');
+
+    const { data: users, error: usersError } = await supabase.from('users').select(selectUserCols.join(','));
     if (usersError) return handleSupabaseError(usersError, res, "Leaderboard Users");
 
+    // 2. Get lightweight post interactions (NO caption, NO image_url)
     const availableColumns = await getTableColumns(supabase, 'posts');
     const postSelect = ['author_id'];
     if (availableColumns.includes('insightful')) postSelect.push('insightful');
@@ -1787,48 +2046,39 @@ app.get("/api/leaderboard", async (req, res) => {
     if (availableColumns.includes('support')) postSelect.push('support');
     if (availableColumns.includes('is_scientific')) postSelect.push('is_scientific');
 
-    const { data: posts, error: postsError } = await supabase.from('posts').select(postSelect.join(',')) as { data: any[], error: any };
+    const { data: posts, error: postsError } = await supabase.from('posts').select(postSelect.join(','));
     if (postsError) return handleSupabaseError(postsError, res, "Leaderboard Posts");
 
-    const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id') as { data: any[], error: any };
+    // 3. Get lightweight comments
+    const { data: comments, error: commentsError } = await supabase.from('comments').select('author_id');
     if (commentsError) return handleSupabaseError(commentsError, res, "Leaderboard Comments");
 
-    const updatePromises: any[] = [];
-    const userStats = users.map(u => {
-      const userPosts = posts.filter(p => p.author_id === u.id);
-      const userComments = comments.filter(c => c.author_id === u.id);
+    const userStats = (users || []).map(u => {
+      const userPosts = (posts || []).filter(p => p.author_id === u.id);
+      const userComments = (comments || []).filter(c => c.author_id === u.id);
       
-      const interactionsReceived = userPosts.reduce((acc, p) => acc + (p.insightful || 0) + (p.ask || 0) + (p.support || 0), 0);
+      const interactionsReceived = userPosts.reduce((acc, p) => acc + ((p as any).insightful || 0) + ((p as any).ask || 0) + ((p as any).support || 0), 0);
       
-      // Calculate XP based on activity to ensure accuracy for users like "deddy armanda"
       // Post: 10, Scientific: +5, Comment: 2, Interaction Received: 2
       const calculatedXp = (userPosts.length * 10) + 
-                           (userPosts.filter(p => p.is_scientific).length * 5) + 
+                           (userPosts.filter(p => (p as any).is_scientific).length * 5) + 
                            (userComments.length * 2) + 
                            (interactionsReceived * 2);
       
-      // Use the higher value between stored XP and calculated XP
+      // Use the higher value to never decrease XP
       const finalXp = Math.max((u as any).xp || 0, calculatedXp);
-
-      // Sync XP to database if it's higher
-      if (finalXp > ((u as any).xp || 0)) {
-        updatePromises.push(supabase.from('users').update({ xp: finalXp }).eq('id', u.id));
-      }
 
       return {
         id: u.id || u.username,
         username: u.username,
-        name: u.full_name || u.fullname || u.name || u.nama || u.username || "Tidak Diketahui",
-        className: u.class_name || u.classname || u.kelas || "10-A",
+        name: (u as any).full_name || (u as any).fullname || (u as any).name || (u as any).nama || u.username || "Tidak Diketahui",
+        className: (u as any).class_name || (u as any).classname || (u as any).kelas || "10-A",
         schoolName: (u as any).school_name || "Sekolah EduGram",
+        role: (u as any).role || (u.id.includes('TEACHER') ? 'teacher' : 'student'),
         xp: finalXp,
         interactions: interactionsReceived
       };
     });
-
-    if (updatePromises.length > 0) {
-      await Promise.all(updatePromises).catch(err => console.error('Failed to update some XPs:', err));
-    }
 
     const leaderboard = userStats
       .sort((a, b) => b.xp - a.xp || b.interactions - a.interactions)
@@ -1958,8 +2208,7 @@ app.get("/api/search", async (req, res) => {
     // --- Search Users ---
     let finalUsers: any[] = [];
     try {
-      const { data: sampleUser } = await supabase.from('users').select('*').limit(1);
-      const userCols = sampleUser && sampleUser.length > 0 ? Object.keys(sampleUser[0]) : ['full_name', 'username', 'bio'];
+      const userCols = await getTableColumns(supabase, 'users');
       
       const selectUserCols = ['id', 'username', 'profile_picture_url', 'role', 'xp'];
       ['full_name', 'fullname', 'name', 'nama', 'bio', 'class_name', 'school_name'].forEach(col => {
@@ -1969,12 +2218,18 @@ app.get("/api/search", async (req, res) => {
       let userQueryBuilder = supabase.from('users').select(selectUserCols.join(','));
       const escapedQ = q.replace(/,/g, '\\,');
       const searchCols = ['full_name', 'fullname', 'name', 'nama', 'username', 'bio'].filter(c => userCols.includes(c));
-      let orConditions = searchCols.map(col => `${col}.ilike.%${escapedQ}%`).join(',');
       
-      const { data: dbUsers } = await userQueryBuilder.or(orConditions).limit(20);
-      finalUsers = dbUsers || [];
+      if (searchCols.length > 0) {
+        const sanitizedQ = q.replace(/,/g, '\\,');
+        let orConditions = searchCols.map(col => `${col}.ilike.%${sanitizedQ}%`).join(',');
+        const { data: dbUsers, error } = await userQueryBuilder.or(orConditions).limit(20);
+        if (error) {
+          console.error("Search users error:", JSON.stringify(error, null, 2));
+        }
+        finalUsers = dbUsers || [];
+      }
     } catch (e) {
-      console.warn("Supabase user search failed, using fallbacks");
+      console.error("Supabase user search failed, using fallbacks:", e);
     }
 
     // Mix with fallback if needed or empty
